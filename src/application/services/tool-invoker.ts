@@ -1,0 +1,115 @@
+import {
+  InternalError,
+  ToolNotFoundError,
+  ValidationError,
+  toDomainError,
+} from "../../domain/errors/errors.js";
+import type { SessionId } from "../../domain/shared/ids.js";
+import type { AppConfig } from "../ports/config.js";
+import type { Clock } from "../ports/clock.js";
+import type { ClientDirectory } from "../ports/client-directory.js";
+import type { ExecutionGateway } from "../ports/execution-gateway.js";
+import type { Logger } from "../ports/logger.js";
+import type { Metrics } from "../ports/metrics.js";
+import type { SemanticIndex } from "../ports/semantic-index.js";
+import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
+import type { ToolRegistry } from "../tool/registry.js";
+import type { SessionManager } from "./session-manager.js";
+
+export interface ToolInvokerDeps {
+  readonly registry: ToolRegistry;
+  readonly sessions: SessionManager;
+  readonly gateway: ExecutionGateway;
+  readonly clients: ClientDirectory;
+  readonly logger: Logger;
+  readonly metrics: Metrics;
+  readonly clock: Clock;
+  readonly config: AppConfig;
+  readonly host: HostServices;
+  readonly semantic: SemanticIndex;
+}
+
+export interface InvocationRequest {
+  readonly toolName: string;
+  readonly input: unknown;
+  readonly sessionId: SessionId;
+  readonly sessionLabel: string;
+}
+
+/**
+ * The single use-case that runs a tool. It is the only place that knows the full
+ * lifecycle of a call — validate, resolve the target client, build the sandboxed
+ * context, time it, record metrics, and normalize every failure into a
+ * {@link DomainError}. Tools stay tiny because all of this lives here.
+ */
+export class ToolInvoker {
+  constructor(private readonly deps: ToolInvokerDeps) {}
+
+  async invoke(request: InvocationRequest): Promise<ToolResult> {
+    const { registry, sessions, gateway, clients, metrics, clock, config } = this.deps;
+    const tool = registry.get(request.toolName);
+    if (!tool) throw new ToolNotFoundError(request.toolName);
+
+    const parsed = tool.input.safeParse(request.input);
+    if (!parsed.success) {
+      throw new ValidationError(`Invalid arguments for "${tool.name}".`, {
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      });
+    }
+
+    const requiresClient = tool.requiresClient !== false;
+    const client = requiresClient
+      ? sessions.requireActiveClient(request.sessionId, request.sessionLabel)
+      : undefined;
+
+    const logger = this.deps.logger.child({
+      tool: tool.name,
+      session: request.sessionId,
+      ...(client ? { client: client.id } : {}),
+    });
+
+    const controller = new AbortController();
+    const context: ToolContext = {
+      logger,
+      signal: controller.signal,
+      client,
+      clients,
+      session: sessions.createContext(request.sessionId, request.sessionLabel),
+      host: this.deps.host,
+      semantic: this.deps.semantic,
+      runLuau: (source, options) => {
+        if (!client) {
+          throw new InternalError(`Tool "${tool.name}" called runLuau without a resolved client.`);
+        }
+        return gateway.eval(
+          client.id,
+          {
+            source,
+            threadContext: options?.threadContext ?? config.execution.defaultThreadContext,
+            timeoutMs: options?.timeoutMs ?? config.execution.defaultTimeoutMs,
+          },
+          controller.signal,
+        );
+      },
+    };
+
+    const startedAt = clock.monotonic();
+    metrics.increment("tool.invocations", 1, { tool: tool.name });
+    try {
+      const result = await tool.execute(parsed.data, context);
+      const elapsed = clock.monotonic() - startedAt;
+      metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "ok" });
+      logger.info({ ms: Math.round(elapsed) }, "tool completed");
+      return result;
+    } catch (thrown) {
+      const error = toDomainError(thrown);
+      const elapsed = clock.monotonic() - startedAt;
+      metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "error" });
+      metrics.increment("tool.errors", 1, { tool: tool.name, code: error.code });
+      logger.warn({ ms: Math.round(elapsed), err: error.toJSON() }, "tool failed");
+      throw error;
+    } finally {
+      controller.abort();
+    }
+  }
+}

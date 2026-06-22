@@ -1,0 +1,153 @@
+/**
+ * Composition root. This is the ONLY place that knows about concrete adapters:
+ * it loads config, instantiates the infrastructure, wires it to the application
+ * ports, registers the tools, and starts the transports. Everything else depends
+ * on interfaces, so this file is the single seam where the system is assembled.
+ */
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { ToolRegistry } from "../application/tool/registry.js";
+import { SessionManager } from "../application/services/session-manager.js";
+import { ToolInvoker } from "../application/services/tool-invoker.js";
+import { loadConfig } from "../infrastructure/config/load-config.js";
+import { ChildProcessShell } from "../infrastructure/host/child-process-shell.js";
+import { SandboxedHostFileSystem } from "../infrastructure/host/sandboxed-file-system.js";
+import { McpAdapter } from "../infrastructure/mcp/mcp-adapter.js";
+import { HealthReporter } from "../infrastructure/observability/health.js";
+import { createLogger } from "../infrastructure/observability/pino-logger.js";
+import { createMetrics } from "../infrastructure/observability/metrics.js";
+import { systemClock } from "../infrastructure/observability/system-clock.js";
+import { InMemorySessionStore } from "../infrastructure/persistence/in-memory-session-store.js";
+import { HttpEmbeddingsProvider } from "../infrastructure/semantic/http-embeddings-provider.js";
+import { InMemorySemanticIndex } from "../infrastructure/semantic/in-memory-semantic-index.js";
+import { BridgeServer } from "../infrastructure/transport/bridge-server.js";
+import { allTools } from "../tools/index.js";
+
+const APP_VERSION = "2.0.0";
+
+interface Application {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/** Assemble the whole system from configuration. Pure wiring — no side effects yet. */
+function compose(): Application {
+  const config = loadConfig(process.argv.slice(2), process.env);
+  const logger = createLogger(config.logging).child({ session: config.session.id });
+  const clock = systemClock;
+  const metrics = createMetrics();
+
+  const sessionStore = new InMemorySessionStore();
+  // BridgeServer is both the ExecutionGateway and the ClientDirectory, so the
+  // same instance is injected wherever either port is required.
+  const bridge = new BridgeServer({ config, logger, clock, metrics });
+  const health = new HealthReporter({ clock, clients: bridge, version: APP_VERSION });
+
+  // Serve the in-game connector so the loader can fetch it over HTTP. Resolved
+  // relative to this module so it works from `dist/` and from a published package.
+  const connectorPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../connector/connector.luau",
+  );
+  bridge.addRoutes((app) => {
+    app.get("/api/health", (c) => c.json(health.report()));
+    app.get("/connector.luau", (c) => {
+      try {
+        return c.body(readFileSync(connectorPath, "utf8"), 200, {
+          "Content-Type": "text/plain; charset=utf-8",
+        });
+      } catch {
+        return c.text("connector.luau not found", 404);
+      }
+    });
+  });
+
+  // Host-side capabilities (server machine): a sandboxed filesystem (execute-file)
+  // and an OS shell (Windows tools). The filesystem is allow-listed to the cwd,
+  // ~/Documents, and any configured script dirs.
+  const host = {
+    shell: new ChildProcessShell({ logger }),
+    fs: new SandboxedHostFileSystem([
+      process.cwd(),
+      join(homedir(), "Documents"),
+      ...config.execution.scriptDirs,
+    ]),
+  };
+  const semantic = new InMemorySemanticIndex({
+    embeddings: new HttpEmbeddingsProvider(config.semantic),
+  });
+
+  const sessions = new SessionManager(sessionStore, bridge);
+  const registry = new ToolRegistry();
+  registry.registerAll(allTools());
+
+  const invoker = new ToolInvoker({
+    registry,
+    sessions,
+    gateway: bridge,
+    clients: bridge,
+    logger,
+    metrics,
+    clock,
+    config,
+    host,
+    semantic,
+  });
+
+  const mcp = new McpAdapter({ registry, invoker, config, logger });
+
+  // Pre-create this process's session so its label shows up immediately.
+  sessionStore.getOrCreate(config.session.id, config.session.label);
+
+  let stopping = false;
+  return {
+    async start() {
+      await bridge.start();
+      await mcp.connectStdio();
+      logger.info(
+        {
+          version: APP_VERSION,
+          host: config.server.host,
+          port: config.server.port,
+          tools: registry.size,
+          label: config.session.label,
+        },
+        "executor-mcp-roblox ready",
+      );
+    },
+    async stop() {
+      if (stopping) return;
+      stopping = true;
+      logger.info("shutting down");
+      await bridge.stop();
+    },
+  };
+}
+
+async function main(): Promise<void> {
+  let app: Application;
+  try {
+    app = compose();
+  } catch (error) {
+    // Logger may not exist yet; stderr is safe (stdout is reserved for MCP).
+    process.stderr.write(`fatal: failed to start — ${(error as Error).message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const shutdown = (signal: NodeJS.Signals): void => {
+    void app
+      .stop()
+      .catch(() => undefined)
+      .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
+  await app.start();
+}
+
+void main();
