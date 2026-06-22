@@ -21,6 +21,14 @@ export interface LuauOptions {
   readonly timeoutMs?: number;
 }
 
+/** Lets the `script` tool expose the whole tool surface to in-game Luau as `mcp.*`. */
+export interface ScriptingContext {
+  /** Loopback base URL of this server, reachable from the executor's HTTP client. */
+  readonly baseUrl: string;
+  /** Mint a one-shot token for the `/api/exec-tool` bridge; dispose when done. */
+  mint(): { token: string; dispose: () => void };
+}
+
 /** Per-call session controls handed to session-management tools. */
 export interface SessionContext {
   readonly id: SessionId;
@@ -54,6 +62,8 @@ export interface ToolContext {
   readonly host: HostServices;
   /** Per-client semantic script index. */
   readonly semantic: SemanticIndex;
+  /** Tool-calling bridge for the `script` tool (absent for ordinary tools/tests). */
+  readonly scripting?: ScriptingContext;
 }
 
 /** The value a tool returns. `data` is serialized to the AI client verbatim. */

@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ToolRegistry } from "../application/tool/registry.js";
+import { ScriptBridge } from "../application/services/script-bridge.js";
 import { SessionManager } from "../application/services/session-manager.js";
 import { ToolInvoker } from "../application/services/tool-invoker.js";
 import { loadConfig } from "../infrastructure/config/load-config.js";
@@ -86,6 +87,8 @@ function compose(): Application {
   const registry = new ToolRegistry();
   registry.registerAll(allTools());
   const activity = new InMemoryActivityLog();
+  // Backs the `script` tool's in-game `mcp.<tool>()` bridge.
+  const scriptBridge = new ScriptBridge();
 
   // The dashboard (when enabled) claims `/` and the `/api/*` read endpoints.
   if (config.dashboard.enabled) {
@@ -114,6 +117,27 @@ function compose(): Application {
     host,
     semantic,
     activity,
+    scriptBridge,
+  });
+  scriptBridge.attach(invoker);
+
+  // Token-gated bridge that the `script` tool's in-game `mcp.<tool>()` calls hit.
+  // The token is minted per script run and known only to that running Luau.
+  bridge.addRoutes((app) => {
+    app.post("/api/exec-tool", async (c) => {
+      let payload: { token?: unknown; tool?: unknown; args?: unknown };
+      try {
+        payload = (await c.req.json());
+      } catch {
+        return c.json({ ok: false, error: "invalid JSON body" }, 400);
+      }
+      const token = typeof payload.token === "string" ? payload.token : "";
+      const tool = typeof payload.tool === "string" ? payload.tool : "";
+      // Roblox encodes an empty Lua table as `[]`; treat that as "no args".
+      const args = Array.isArray(payload.args) && payload.args.length === 0 ? {} : payload.args;
+      if (!token || !tool) return c.json({ ok: false, error: "missing token or tool" }, 400);
+      return c.json(await scriptBridge.run(token, tool, args));
+    });
   });
 
   const mcp = new McpAdapter({ registry, invoker, config, logger });

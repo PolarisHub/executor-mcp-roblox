@@ -35,7 +35,10 @@ export class McpAdapter {
   /** Build the MCP server and register every catalog tool plus `list-tools`. */
   buildServer(): McpServer {
     const { registry, logger } = this.deps;
-    const server = new McpServer({ name: SERVER_NAME, version: DEFAULT_VERSION });
+    const server = new McpServer(
+      { name: SERVER_NAME, version: DEFAULT_VERSION },
+      { instructions: this.buildInstructions() },
+    );
 
     for (const tool of registry.list()) {
       this.registerTool(server, tool);
@@ -56,6 +59,32 @@ export class McpAdapter {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     this.deps.logger.info("MCP server connected over stdio");
+  }
+
+  /**
+   * Server-level guidance returned at initialize. It tells the model the real
+   * breadth of the toolset (so it doesn't default to a handful of tools) and
+   * points it at `list-tools` for discovery and `script` for orchestration.
+   */
+  private buildInstructions(): string {
+    const { registry } = this.deps;
+    const counts = registry.categoryCounts();
+    const cats = counts.map((c) => `${c.category} (${c.count})`).join(", ");
+    return [
+      `This server gives you deep, low-level control of a LIVE Roblox game through an executor: ` +
+        `${registry.size} tools across ${counts.length} categories — ${cats}.`,
+      `You have far more than basic code execution. There are dedicated tools for signals & connections, ` +
+        `metatables & closures, cross-references (xrefs), reverse-engineering & disassembly, memory scanning, ` +
+        `remote spying, GUI, drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming ` +
+        `something is impossible, call \`list-tools\` (no args for the category overview, or { category } / ` +
+        `{ search }) — there is very likely a purpose-built tool for it. Prefer the specific tool over hand-written ` +
+        `Luau whenever one exists.`,
+      `To orchestrate a multi-step workflow, use the \`script\` tool: write ONE Luau program that calls any tool ` +
+        `inline as \`mcp.<camelCaseToolName>(args)\` (or \`mcp.call("kebab-name", args)\`) and uses the returned ` +
+        `data — scan, branch, transform, and act in a single call instead of many round-trips.`,
+      `When several games are connected, select one first (list-clients / select-client). Most tools degrade ` +
+        `cleanly with { error } when a capability is missing from the executor, so it is safe to probe.`,
+    ].join("\n\n");
   }
 
   private registerTool(server: McpServer, tool: Tool): void {

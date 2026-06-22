@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineTool } from "../../src/application/tool/define-tool.js";
 import { ToolRegistry } from "../../src/application/tool/registry.js";
+import { ScriptBridge } from "../../src/application/services/script-bridge.js";
 import { SessionManager } from "../../src/application/services/session-manager.js";
 import { ToolInvoker } from "../../src/application/services/tool-invoker.js";
 import type { ToolInvokerDeps } from "../../src/application/services/tool-invoker.js";
@@ -98,6 +99,7 @@ function buildDeps(overrides: Partial<ToolInvokerDeps> = {}): {
       recent: () => [],
       summary: () => ({ total: 0, errors: 0 }),
     },
+    scriptBridge: new ScriptBridge(),
     ...overrides,
   };
   return { deps, registry, gateway, metrics };

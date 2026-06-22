@@ -15,6 +15,7 @@ import type { Metrics } from "../ports/metrics.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
 import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
 import type { ToolRegistry } from "../tool/registry.js";
+import type { ScriptBridge } from "./script-bridge.js";
 import type { SessionManager } from "./session-manager.js";
 
 export interface ToolInvokerDeps {
@@ -29,6 +30,7 @@ export interface ToolInvokerDeps {
   readonly host: HostServices;
   readonly semantic: SemanticIndex;
   readonly activity: ActivityLog;
+  readonly scriptBridge: ScriptBridge;
 }
 
 export interface InvocationRequest {
@@ -46,6 +48,13 @@ export interface InvocationRequest {
  */
 export class ToolInvoker {
   constructor(private readonly deps: ToolInvokerDeps) {}
+
+  /** Loopback URL the executor's HTTP client can reach this server at. */
+  private scriptBaseUrl(): string {
+    const { host, port } = this.deps.config.server;
+    const reachable = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+    return `http://${reachable}:${port}`;
+  }
 
   async invoke(request: InvocationRequest): Promise<ToolResult> {
     const { registry, sessions, gateway, clients, metrics, clock, config } = this.deps;
@@ -79,6 +88,11 @@ export class ToolInvoker {
       session: sessions.createContext(request.sessionId, request.sessionLabel),
       host: this.deps.host,
       semantic: this.deps.semantic,
+      scripting: {
+        baseUrl: this.scriptBaseUrl(),
+        mint: () =>
+          this.deps.scriptBridge.mint(request.sessionId, request.sessionLabel, client?.id),
+      },
       runLuau: (source, options) => {
         if (!client) {
           throw new InternalError(`Tool "${tool.name}" called runLuau without a resolved client.`);
