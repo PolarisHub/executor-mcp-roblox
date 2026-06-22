@@ -1,167 +1,129 @@
-<p align="center">
-  <img src="docs/banner.svg" alt="Roblox Executor MCP" width="900"/>
-</p>
+# Roblox Executor MCP Server
 
-<h1 align="center">Roblox Executor MCP Server</h1>
+An MCP server that lets an AI client drive a running Roblox executor. The model calls a tool, the server runs Luau in your game, and you get structured data back. With that an agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, and a lot more.
 
-<p align="center">
-  <b>A clean-architecture MCP server that lets AI agents drive a running Roblox executor client.</b><br/>
-  Execute Luau, decompile and search scripts, spy on remotes, scan the heap, cross-reference
-  functions, and hook live code — all through a hexagonal, fully testable core.
-</p>
+It ships **225 tools** across 21 categories and runs against a Volt-class executor.
 
----
+## What's in the box
 
-> A clean, **hexagonal (ports & adapters)** MCP server that exposes a running Roblox executor client to AI agents — **225 tools across 21 categories**, including reverse-engineering, signals/metatables, memory scanning, instrumentation, plus Filesystem, Crypt, Drawing, low-level RakNet packet I/O, WebSocket, HTTP, Fast Flags, and `filtergc`, all verified end-to-end against a live Volt client. MIT-licensed; see [License](#license).
+Plenty, but the things you'll reach for first:
 
-## What this is
+- Run code. `run-luau` executes arbitrary Luau and returns JSON; `eval-expression` is the one-liner version. Most of the other tools are just well-tested Luau you don't have to write yourself.
+- Reverse engineering. Walk the GC, read closure constants and upvalues, cross-reference functions/strings/remotes, dump bytecode, find duplicate functions, and query the heap with `filtergc`.
+- Remotes. Inventory them, read their argument shapes, watch traffic, block or replay calls, down to raw RakNet packet capture.
+- Instrumentation. Hook-and-log, count calls, spoof return values, profile durations.
+- Finding hidden things. Actor scripts, nil-parented instances, hidden GUIs, `gethui`, detached remotes.
+- Volt extras. Filesystem, crypt, drawing, fast flags, WebSocket, HTTP.
 
-This server exposes a Roblox executor client to an MCP-compatible AI client (Claude, Cursor, Windsurf, …) as a set of **tools**. The AI calls a tool; the server runs guarded Luau on the connected game and returns structured data. That makes it possible for an agent to reverse-engineer, inspect, and instrument a live Roblox session through a hypothesis → run → verify loop.
+Run `list-tools` once you're connected for the full catalog grouped by category.
 
-The rewrite's value proposition:
+## How it works
 
-- **A pure, testable core.** Domain rules (client selection, session isolation, the error taxonomy) are dependency-free and unit-tested without a socket, an SDK, or a running game.
-- **Ports and adapters.** Every side effect — the WebSocket bridge, the MCP transport, logging, config, metrics — sits behind an interface, so it can be swapped or mocked.
-- **One uniform tool contract.** Every tool is a `defineTool({ … })` plugin that only touches a `ToolContext`. No tool knows about the transport, the SDK, or how a client was chosen.
-- **Multi-session by construction.** Two AI sessions can drive two different games at once, each pinned to its own client, account-sticky across rejoins — enforced by a single pure resolution rule.
+The codebase is hexagonal (ports and adapters). The reason that matters: all the real logic — which client a session targets, how a tool call gets validated and run, what the errors mean — is plain TypeScript that has no idea WebSockets, the MCP SDK, or pino exist. You can test it with fakes and never open a socket.
 
-## Architecture
-
-The codebase is a **hexagonal (ports & adapters)** design. The dependency rule is strict and never violated:
-
-> **domain ← application ← infrastructure**, with **tools** depending on application + domain, and the **interface** (composition root) depending on everything.
-
-```mermaid
-flowchart LR
-  subgraph core["Inner core (pure, no I/O)"]
-    domain["domain/<br/>types and rules"]
-    application["application/<br/>ports + use-cases + tool contract"]
-  end
-  subgraph outer["Outer ring (adapters)"]
-    infrastructure["infrastructure/<br/>implements the ports"]
-    tools["tools/<br/>defineTool plugins"]
-  end
-  interface["interface/<br/>composition root (main)"]
-
-  domain --> application
-  application --> infrastructure
-  application --> tools
-  domain --> tools
-  interface --> domain
-  interface --> application
-  interface --> infrastructure
-  interface --> tools
+```
+domain/          pure types and rules, no dependencies
+application/     ports (interfaces) + use-cases + the Tool contract
+infrastructure/  the adapters that implement those ports
+tools/           the tools themselves, each a defineTool() plugin
+interface/       main.ts, which wires it all together and starts up
 ```
 
-Arrows point **toward** a dependency: `application` depends on `domain`; `infrastructure` and `tools` depend on `application`; nothing inner depends on anything outer. The only place that wires concrete adapters to ports is `interface/` (the composition root).
+Imports only point inward. `tools` and `infrastructure` lean on `application`, `application` leans on `domain`, and nothing in the core reaches back out. Exactly one file knows about concrete adapters, and that's `interface/main.ts`.
 
-| Layer              | Path                    | Responsibility                                                                                                                                                                  | Depends on          |
-| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| **Domain**         | `src/domain/**`         | Pure types and rules: ids, the error hierarchy, the bridge protocol shapes, the client/selection/session model, tool categories. No dependencies whatsoever.                    | nothing             |
-| **Application**    | `src/application/**`    | Ports (interfaces the outside must implement), use-case services (`ToolInvoker`, `SessionManager`), and the `Tool` / `defineTool` contract.                                     | domain              |
-| **Infrastructure** | `src/infrastructure/**` | Adapters that _implement_ the ports: the WebSocket bridge / execution gateway, the MCP stdio adapter, the pino logger, the config loader, metrics, the in-memory session store. | domain, application |
-| **Tools**          | `src/tools/**`          | Concrete `defineTool` plugins. Each depends only on the injected `ToolContext`.                                                                                                 | application, domain |
-| **Interface**      | `src/interface/**`      | The composition root (`main`): builds config, instantiates adapters, registers tools, and starts the transports.                                                                | everything          |
+Adding a tool is one file:
 
-A deeper write-up — the full port list, the request lifecycle of a tool call, the multi-session ownership model, and the error/observability strategy — lives in [docs/architecture/overview.md](docs/architecture/overview.md). The design rationale is recorded as ADRs in [docs/adr/](docs/adr/).
+```ts
+export default defineTool({
+  name: "get-health",
+  category: "Inspection",
+  input: z.object({ path: z.string() }),
+  async execute({ path }, ctx) {
+    const hp = await ctx.runLuau(`return ${path}.Humanoid.Health`);
+    return { data: { hp } };
+  },
+});
+```
 
-## Quick Start
+The tool never touches the transport and never picks a client. The invoker resolves the active client first and hands you a `ctx` that's already bound to it.
 
-Requires **Node.js ≥ 20** and **pnpm**.
+There's a longer write-up in [docs/architecture/overview.md](docs/architecture/overview.md), and the decisions behind it are recorded as ADRs under [docs/adr/](docs/adr/).
+
+## Quick start
+
+You need Node 20+ and pnpm.
 
 ```bash
-pnpm install      # install dependencies
-pnpm build        # compile TypeScript to dist/
-pnpm start        # run the compiled server (or: pnpm dev for watch mode)
+pnpm install
+pnpm build
+pnpm start        # or pnpm dev for watch mode
 ```
 
-The server speaks the **MCP stdio protocol on stdout/stdin** and hosts the **bridge** (WebSocket) for the in-game connector. Point any MCP-compatible client at the launched process; configure your client to run `node /path/to/executor-mcp-roblox/dist/interface/main.js`.
+The server talks MCP over stdin/stdout, so point your client (Claude, Cursor, Windsurf, anything that speaks MCP) at `node /path/to/executor-mcp-roblox/dist/interface/main.js`. Logs go to stderr; stdout is the protocol channel and stays clean.
 
-### Connect from Roblox
+### Connecting the game
 
-The connector is a single Luau script you run in your executor (or Auto Execute). It connects back to the server's bridge over WebSocket:
+Paste this into your executor, or drop it in autoexec:
 
 ```lua
-getgenv().BridgeURL = "localhost:16384"  -- host:port the server is bound to (default loopback)
+getgenv().BridgeURL = "localhost:16384"
 loadstring(game:HttpGet("http://" .. getgenv().BridgeURL .. "/connector.luau"))()
 ```
 
-The fetched connector opens a WebSocket to **`ws://<BridgeURL>/bridge`**, performs the `hello` handshake (advertising the executor's identity and probed capabilities), then runs the `op` requests the server sends and returns JSON-encoded results. See the [bridge protocol ADR](docs/adr/0002-clean-slate-bridge-protocol.md) and [`src/domain/protocol/messages.ts`](src/domain/protocol/messages.ts) for the exact envelope.
-
-> The connector and the bridge's HTTP/WebSocket serving live in the infrastructure layer. For the full tool catalog and the history of how the upstream toolkit was migrated onto this architecture, see [MIGRATION.md](docs/MIGRATION.md).
+It pulls the connector from the server, opens a WebSocket to `ws://<BridgeURL>/bridge`, sends a `hello` with the executor name and the capabilities it probed, and after that just runs whatever the server asks and replies with JSON. The message shapes live in [src/domain/protocol/messages.ts](src/domain/protocol/messages.ts) if you want the details.
 
 ## Configuration
 
-Configuration is produced once at startup by the config adapter (CLI flags + environment), validated, and injected read-only everywhere — no code reads `process.env` directly. The validated shape is [`AppConfig`](src/application/ports/config.ts).
+Everything is read once at startup, validated, and then passed around read-only. The server doesn't touch `process.env` again after that.
 
-| Setting                          | Default     | Purpose                                                                                |
-| -------------------------------- | ----------- | -------------------------------------------------------------------------------------- |
-| `server.host`                    | `127.0.0.1` | Bridge bind address. **Loopback by default.** Set `0.0.0.0` only on a trusted LAN/VPN. |
-| `server.port`                    | `16384`     | Bridge + dashboard port.                                                               |
-| `session.id` / `session.label`   | generated   | Identity for this MCP process; the label appears in diagnostics/dashboard.             |
-| `logging.level`                  | `info`      | One of `trace` `debug` `info` `warn` `error` `fatal`.                                  |
-| `logging.pretty`                 | dev: on     | Pretty-printed logs (dev) vs. JSON lines (prod).                                       |
-| `execution.defaultTimeoutMs`     | per build   | Default per-call deadline applied by the execution gateway.                            |
-| `execution.defaultThreadContext` | per build   | Default Roblox thread identity for runs (e.g. 2 = game scripts, 8 = elevated).         |
-| `bridge.heartbeatIntervalMs`     | per build   | Connector heartbeat / liveness interval.                                               |
-| `dashboard.enabled`              | per build   | Whether the local web dashboard is served.                                             |
+| Flag              | Env var                                | Default     |                                                  |
+| ----------------- | -------------------------------------- | ----------- | ------------------------------------------------ |
+| `--port`          | `ROBLOX_MCP_PORT`                      | `16384`     | Bridge port.                                     |
+| `--host`          | `ROBLOX_MCP_HOST`                      | `127.0.0.1` | Bind address (see Safety below).                 |
+| `--session-label` | `ROBLOX_MCP_SESSION_LABEL`             | generated   | Friendly name for this process.                  |
+|                   | `ROBLOX_MCP_LOG_LEVEL`                 | `info`      | `trace` through `fatal`.                         |
+|                   | `ROBLOX_MCP_LOG_PRETTY`                | off         | Set to `1` for human-readable logs.              |
+|                   | `ROBLOX_MCP_SCRIPT_DIRS`               | —           | Extra folders `execute-file` is allowed to read. |
+|                   | `ROBLOX_MCP_EMBEDDINGS_URL` / `_MODEL` | local       | Embeddings endpoint for semantic search.         |
 
-The exact flag/env names are owned by the config adapter (`src/infrastructure/config/**`); this table reflects the validated `AppConfig` it produces. Where a default is build-specific it is set by that adapter, not the domain.
+A few defaults that aren't flags: 30s per-call timeout, thread identity 8, and a connector heartbeat every 2s.
 
-## Project Layout
+## Layout
 
 ```text
 src/
-  domain/            Pure types and rules — zero dependencies
-    shared/          Branded ids (ClientId, SessionId, UserId, RequestId)
-    errors/          DomainError hierarchy + stable ErrorCode set
-    protocol/        Bridge wire envelope (ClientMessage / ServerMessage)
-    client/          RobloxClient, ClientSelection + resolveSelection, Session
-    tool/            The fixed ToolCategory set
-  application/       Ports + use-cases + the tool contract
-    ports/           logger, clock, metrics, config, execution-gateway,
-                     client-directory, session-store
-    services/        SessionManager (selection), ToolInvoker (call lifecycle)
-    tool/            Tool / ToolContext, defineTool, ToolRegistry
-  infrastructure/    Adapters implementing the ports
-    transport/       WebSocket bridge + ExecutionGateway
-    mcp/             MCP stdio adapter (registers tools with the SDK)
-    observability/   pino Logger + Metrics adapters
-    config/          CLI/env config loader -> AppConfig
-    persistence/     In-memory SessionStore
-  tools/             defineTool plugins (diagnostics, execution, inspection, session, …)
-  interface/         Composition root (main) — wires everything, starts transports
-connector/           The in-game Luau connector
-docs/                Architecture overview, ADRs, migration plan
-test/                unit / integration / helpers
+  domain/          pure types and rules, no dependencies
+  application/     ports, use-cases, and the Tool contract
+  infrastructure/  adapters: WebSocket bridge, MCP stdio, pino, config, ...
+  tools/           one folder per category, each tool its own defineTool() file
+  interface/       main.ts, the composition root
+connector/         the in-game Luau connector
+docs/              architecture notes, ADRs, migration history
+test/              unit + integration, with shared fakes in test/helpers
 ```
 
 ## Scripts
 
-| Command                             | What it does                                                     |
-| ----------------------------------- | ---------------------------------------------------------------- |
-| `pnpm typecheck`                    | `tsc --noEmit` against the strict config.                        |
-| `pnpm lint`                         | ESLint (flat config) — forbids `console`, enforces import rules. |
-| `pnpm format` / `pnpm format:check` | Prettier (100 cols, double quotes, semicolons, trailing commas). |
-| `pnpm test` / `pnpm test:watch`     | Vitest. `test:coverage` adds v8 coverage.                        |
-| `pnpm build`                        | Compile to `dist/` via `tsconfig.build.json`.                    |
-| `pnpm dev`                          | `tsx watch` the composition root for live reload.                |
-| `pnpm verify`                       | typecheck + lint + test (the gate CI runs).                      |
+| Command                     |                                                                 |
+| --------------------------- | --------------------------------------------------------------- |
+| `pnpm verify`               | typecheck, lint, and tests. This is what CI runs.               |
+| `pnpm test`                 | Vitest (`test:coverage` for coverage, `test:watch` to iterate). |
+| `pnpm build`                | Compile to `dist/`.                                             |
+| `pnpm dev`                  | Run the server under `tsx watch`.                               |
+| `pnpm lint` / `pnpm format` | ESLint and Prettier.                                            |
 
-## Observability
+## Safety
 
-- **Logging.** All logging goes through the injected [`Logger`](src/application/ports/logger.ts) port (a pino-compatible surface) which writes to **stderr** — never stdout, which is reserved for the MCP stdio protocol. `console` is banned by ESLint. The `ToolInvoker` derives a child logger per call with `tool`, `session`, and `client` bindings and logs completion (with elapsed ms) or failure (with the normalized error).
-- **Metrics.** A thin, vendor-neutral [`Metrics`](src/application/ports/metrics.ts) port (counter / histogram / gauge). The invoker emits `tool.invocations`, `tool.duration_ms` (tagged `outcome`), and `tool.errors` (tagged with the error `code`). The default adapter is a no-op; a real exporter wires in at the composition root.
-- **Health.** The bridge serves a `/health` endpoint, and diagnostic tools (`bridge-status`, connector diagnostics) report liveness and the connected-client roster.
+Read this once. The server runs arbitrary code on your game client. That's the whole point, but it means you should only connect AI clients you trust. There's no auth on the bridge, so it listens on `127.0.0.1` and isn't reachable from the network. If you switch `--host` to `0.0.0.0`, keep it behind a LAN, VPN, or SSH tunnel and don't put it on the open internet. Tools that change game state carry `mutatesState: true` and say so in their description, so the risky surface is easy to spot.
 
-## Security
+## Tests
 
-> **This server allows arbitrary code execution on the connected game client.** Only use it with AI clients you trust. The bridge has no authentication, so it binds to **`127.0.0.1` (loopback only)** by default and is not reachable from the network. Set `server.host = 0.0.0.0` only on a trusted LAN, VPN, or SSH tunnel — **never expose it to the internet.** Tools that write live game state are flagged `mutatesState: true` so the surface is auditable, and their descriptions say so explicitly.
-
-## Testing
-
-The pure core is the easy part: domain rules (`resolveSelection`, the error mapping) and use-cases (`ToolInvoker`, `SessionManager`) are tested with a mock `ToolContext` and fake ports — no socket, no SDK, no game. Adapters get focused tests against their port contract. Run the full gate with `pnpm verify`. Tests live in `test/unit`, `test/integration`, and shared fakes in `test/helpers`.
+The core is genuinely easy to test, which was the point of laying it out this way. `resolveSelection`, the error mapping, `ToolInvoker`, and `SessionManager` all run against fake ports with no socket, no SDK, and no game. The adapters get their own tests against the port they implement. `pnpm verify` runs everything.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the layer boundaries and import rules, how to add a tool with `defineTool`, coding standards, and the PR/CI checklist.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup steps, the layer rules, how to add a tool, and the PR checklist.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
