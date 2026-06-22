@@ -271,6 +271,12 @@ export function renderDashboardPage(): string {
   .trow .chev svg { width: 11px; height: 11px; transition: transform .12s ease; }
   .trow.open .chev svg { transform: rotate(90deg); }
   .trow .sq { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .cicon {
+    width: 16px; height: 16px; flex: none;
+    display: inline-block; vertical-align: middle;
+    background-image: url("/assets/class-icons.png");
+    background-repeat: no-repeat; image-rendering: pixelated;
+  }
   .trow .nm { color: var(--text); }
   .trow .cls { color: var(--dim); font-family: var(--mono); font-size: 11.5px; }
   .trow .cc { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -444,7 +450,7 @@ export function renderDashboardPage(): string {
     img.replaceWith(s);
   };
 
-  var state = null, tools = [], pollFails = 0;
+  var state = null, tools = [], pollFails = 0, iconMap = {};
   var activeTab = "clients", activeCat = "__all", query = "";
 
   // ---- explorer state ----
@@ -627,7 +633,11 @@ export function renderDashboardPage(): string {
     return "client=" + encodeURIComponent(exp.clientId) + "&path=" + encodeURIComponent(path);
   }
   function classSquare(cls) {
-    return '<span class="sq" style="background:' + catColor(cls || "?") + '"></span>';
+    var idx = iconMap[cls];
+    if (idx === undefined || idx === null) {
+      return '<span class="sq" style="background:' + catColor(cls || "?") + '"></span>';
+    }
+    return '<span class="cicon" title="' + esc(cls) + '" style="background-position:-' + (idx * 16) + 'px 0"></span>';
   }
 
   function selectExploreClient(id, name) {
@@ -994,7 +1004,14 @@ export function renderDashboardPage(): string {
       tools = data; renderTools();
     }).catch(function () {});
   }
+  function loadIcons() {
+    fetch("/api/class-icons").then(function (r) { return r.json(); }).then(function (data) {
+      iconMap = data || {};
+      if (activeTab === "explorer" && exp.clientId) renderExplorer();
+    }).catch(function () {});
+  }
 
+  loadIcons();
   loadTools();
   pollState();
   setInterval(pollState, 2000);
