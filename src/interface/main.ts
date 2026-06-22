@@ -15,8 +15,10 @@ import { ToolInvoker } from "../application/services/tool-invoker.js";
 import { loadConfig } from "../infrastructure/config/load-config.js";
 import { ChildProcessShell } from "../infrastructure/host/child-process-shell.js";
 import { SandboxedHostFileSystem } from "../infrastructure/host/sandboxed-file-system.js";
+import { Dashboard } from "../infrastructure/dashboard/dashboard.js";
 import { McpAdapter } from "../infrastructure/mcp/mcp-adapter.js";
 import { HealthReporter } from "../infrastructure/observability/health.js";
+import { InMemoryActivityLog } from "../infrastructure/observability/in-memory-activity-log.js";
 import { createLogger } from "../infrastructure/observability/pino-logger.js";
 import { createMetrics } from "../infrastructure/observability/metrics.js";
 import { systemClock } from "../infrastructure/observability/system-clock.js";
@@ -83,6 +85,15 @@ function compose(): Application {
   const sessions = new SessionManager(sessionStore, bridge);
   const registry = new ToolRegistry();
   registry.registerAll(allTools());
+  const activity = new InMemoryActivityLog();
+
+  // The dashboard (when enabled) claims `/` and the `/api/*` read endpoints.
+  if (config.dashboard.enabled) {
+    const dashboard = new Dashboard({ config, clients: bridge, registry, activity, health });
+    bridge.addRoutes((app) => dashboard.mount(app));
+  } else {
+    bridge.addRoutes((app) => app.get("/", (c) => c.text("executor-mcp-roblox")));
+  }
 
   const invoker = new ToolInvoker({
     registry,
@@ -95,6 +106,7 @@ function compose(): Application {
     config,
     host,
     semantic,
+    activity,
   });
 
   const mcp = new McpAdapter({ registry, invoker, config, logger });

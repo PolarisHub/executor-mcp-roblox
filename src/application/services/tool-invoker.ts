@@ -5,6 +5,7 @@ import {
   toDomainError,
 } from "../../domain/errors/errors.js";
 import type { SessionId } from "../../domain/shared/ids.js";
+import type { ActivityLog } from "../ports/activity-log.js";
 import type { AppConfig } from "../ports/config.js";
 import type { Clock } from "../ports/clock.js";
 import type { ClientDirectory } from "../ports/client-directory.js";
@@ -27,6 +28,7 @@ export interface ToolInvokerDeps {
   readonly config: AppConfig;
   readonly host: HostServices;
   readonly semantic: SemanticIndex;
+  readonly activity: ActivityLog;
 }
 
 export interface InvocationRequest {
@@ -95,10 +97,23 @@ export class ToolInvoker {
 
     const startedAt = clock.monotonic();
     metrics.increment("tool.invocations", 1, { tool: tool.name });
+    const recordActivity = (outcome: "ok" | "error", elapsed: number, errorCode?: string): void => {
+      this.deps.activity.record({
+        toolName: tool.name,
+        category: tool.category,
+        sessionId: request.sessionId,
+        outcome,
+        durationMs: Math.round(elapsed),
+        at: clock.now(),
+        ...(client ? { clientId: client.id, clientName: client.username } : {}),
+        ...(errorCode ? { errorCode } : {}),
+      });
+    };
     try {
       const result = await tool.execute(parsed.data, context);
       const elapsed = clock.monotonic() - startedAt;
       metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "ok" });
+      recordActivity("ok", elapsed);
       logger.info({ ms: Math.round(elapsed) }, "tool completed");
       return result;
     } catch (thrown) {
@@ -106,6 +121,7 @@ export class ToolInvoker {
       const elapsed = clock.monotonic() - startedAt;
       metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "error" });
       metrics.increment("tool.errors", 1, { tool: tool.name, code: error.code });
+      recordActivity("error", elapsed, error.code);
       logger.warn({ ms: Math.round(elapsed), err: error.toJSON() }, "tool failed");
       throw error;
     } finally {

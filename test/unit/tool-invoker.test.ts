@@ -93,6 +93,11 @@ function buildDeps(overrides: Partial<ToolInvokerDeps> = {}): {
       stats: () => ({ indexed: false, documentCount: 0, model: null, dimensions: null }),
       clear: () => undefined,
     },
+    activity: {
+      record: () => undefined,
+      recent: () => [],
+      summary: () => ({ total: 0, errors: 0 }),
+    },
     ...overrides,
   };
   return { deps, registry, gateway, metrics };

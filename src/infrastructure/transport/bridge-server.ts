@@ -100,7 +100,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
 
     this.http = new Hono();
     this.http.get("/health", (c) => c.json({ status: "ok" }));
-    this.http.get("/", (c) => c.text("executor-mcp-roblox bridge"));
+    // `/` is left for the composition root to claim (the dashboard, or a fallback).
 
     // Created in `noServer` mode; we route the HTTP `upgrade` event to it so the
     // same port serves both Hono routes and the `/bridge` WebSocket.
