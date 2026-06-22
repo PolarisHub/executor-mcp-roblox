@@ -10,7 +10,7 @@ export default defineTool({
     "menus, ESP overlays, and anti-detection UIs. Scans every nil-parented instance (getnilinstances) and the children " +
     "of CoreGui, keeping anything that is a GUI container (LayerCollector / ScreenGui / BillboardGui / SurfaceGui / any " +
     "GuiBase2d). Each hit reports its name, class, full path, and where it is hidden (location: nil-parented, CoreGui, " +
-    "detached, inside an Actor, etc.). Results are deduped. Requires getnilinstances (Volt-class executors) for the " +
+    "detached, inside an Actor, etc.). Results are deduped. Requires getnilinstances for the " +
     "nil sweep; the CoreGui sweep still runs even if getnilinstances is missing.",
   category: "Actors & Hidden",
   input: z.object({

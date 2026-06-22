@@ -3,14 +3,14 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "draw-clear",
-  title: "Remove ALL Drawing objects (wipe the overlay) — REQUIRES a Volt-class executor",
+  title: "Remove ALL Drawing objects (wipe the overlay)",
   description:
     "Tears down the entire MCP-managed Drawing overlay: iterates every handle stored in getgenv().__mcp_drawings, " +
     "calls :Remove() on each, empties the registry, and additionally calls Drawing.clear() when the executor " +
     "exposes it (to sweep any stray objects this tool did not create). Use it as a one-shot reset between ESP " +
     "sessions. " +
-    "Requires a Volt-class executor exposing the `Drawing` table (type-guarded); each :Remove() and the optional " +
-    "Drawing.clear() are pcall-guarded so a single bad handle never aborts the wipe. On a non-Volt executor it " +
+    "Requires the `Drawing` table (type-guarded); each :Remove() and the optional " +
+    "Drawing.clear() are pcall-guarded so a single bad handle never aborts the wipe. On an executor without it, it " +
     'returns { error = "Drawing is not available in this executor." }. ' +
     "Returns { cleared, failed, drawingClearCalled } or { error }, where 'cleared' is the count of registry " +
     "handles successfully removed.",

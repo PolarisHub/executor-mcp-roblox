@@ -8,7 +8,7 @@ import { defineTool } from "../../application/tool/define-tool.js";
  */
 export default defineTool({
   name: "ws-list",
-  title: "List open WebSockets (Volt/sUNC)",
+  title: "List open WebSockets",
   description:
     "List every WebSocket currently parked in the getgenv registry by ws-connect. For each entry it reports { id, url, " +
     "open, messageCount } so you can see which sockets are still live and how many inbound frames are buffered. " +

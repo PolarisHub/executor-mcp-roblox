@@ -11,7 +11,7 @@ export default defineTool({
     "globals/methods baked into the closure — invaluable for reverse-engineering what a hidden event handler does " +
     "(e.g. which RemoteEvent names or HTTP endpoints it touches). Each constant is passed through a value encoder so " +
     "tables/functions/instances render as readable descriptors instead of raw pointers. Requires getconnections and " +
-    "debug.getconstants (Volt-class executor); returns a clear { error } if either is missing or the connection has " +
+    "debug.getconstants; returns a clear { error } if either is missing or the connection has " +
     "no Lua Function. Returns { Signal, Instance?, ConnectionIndex, Function, Constants: [...], Count }.",
   category: "Signals & Connections",
   input: z.object({

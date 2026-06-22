@@ -12,10 +12,10 @@ import getScriptBytecode from "./get-script-bytecode.js";
 import getScriptHash from "./get-script-hash.js";
 
 /**
- * Volt/UNC "extras" that fold into existing categories: high-value executor
+ * UNC "extras" that fold into existing categories: high-value executor
  * functions (filtergc, debug.getstack, gethui, getrendered, the cache library)
  * exposed as focused tools. Each tool sets its own category explicitly and guards
- * its executor function, so the set degrades cleanly on non-Volt executors.
+ * its executor function, so the set degrades cleanly on executors that lack them.
  */
 export const voltExtrasTools: Tool[] = [
   filterGc,

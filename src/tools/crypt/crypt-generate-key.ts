@@ -3,12 +3,12 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "crypt-generate-key",
-  title: "Generate a random symmetric key with crypt.generatekey (Volt-class executor)",
+  title: "Generate a random symmetric key with crypt.generatekey",
   description:
     "Generate a cryptographically random symmetric key using the executor's `crypt.generatekey()`. The key is " +
     "returned as a Base64 string suitable for use with crypt-encrypt / crypt-decrypt. This is a pure, " +
     "side-effect-free compute that runs entirely in-game. " +
-    "Requires a Volt-class executor exposing `crypt.generatekey`; on a plain/non-Volt executor it returns { error } " +
+    "Requires `crypt.generatekey`; on an executor without it, it returns { error } " +
     "instead of throwing. The call is pcall-guarded. " +
     "Returns { key } or { error }.",
   category: "Crypt",

@@ -13,8 +13,8 @@ export default defineTool({
   description:
     "Read the current value of a Roblox engine FastFlag by name via the executor's getfflag(name). FastFlags " +
     "(FFlag/DFFlag/FInt/etc.) are the runtime feature toggles the Roblox client reads at startup; getfflag returns " +
-    "the current value as a string, or nil when the flag is unknown. Requires a Volt-class executor exposing " +
-    "getfflag. The call is type-guarded and pcall-wrapped: if getfflag is missing you get " +
+    "the current value as a string, or nil when the flag is unknown. Requires getfflag. " +
+    "The call is type-guarded and pcall-wrapped: if getfflag is missing you get " +
     "{ error = 'getfflag is not available in this executor.' }. Returns { name, value } or { error }.",
   category: "Utility",
   input: z.object({

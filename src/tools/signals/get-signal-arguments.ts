@@ -11,7 +11,7 @@ export default defineTool({
     "handler and wait for a fire — invaluable when reverse-engineering a remote-driven or engine signal so you " +
     "know how to construct a fire-signal / replicate-signal call. Pass the instance that owns the signal plus the " +
     "signal member name (or leave signalName empty if instancePath already resolves to the signal). Requires the " +
-    "getsignalarguments executor function (Volt and similar full-API executors); degrades with a clear { error } " +
+    "getsignalarguments executor function; degrades with a clear { error } " +
     "if unavailable. Returns { Signal, Instance?, Arguments } where Arguments is the type/scalar info mapped " +
     "through a safe serializer.",
   category: "Signals & Connections",

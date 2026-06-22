@@ -20,7 +20,7 @@ function valueResolver(expr: string): string {
 
 export default defineTool({
   name: "draw-update",
-  title: "Update properties of an existing Drawing object — REQUIRES a Volt-class executor",
+  title: "Update properties of an existing Drawing object",
   description:
     "Mutates a Drawing overlay previously created by draw-create, looking the handle up by its integer id in " +
     "getgenv().__mcp_drawings and assigning each given property. Use it to move a tracer (To = " +
@@ -28,8 +28,8 @@ export default defineTool({
     "(Visible = 'false'), or change a label (Text = '\"BOSS\"'). " +
     "PROPERTIES: each value is a Luau EXPRESSION STRING evaluated via loadstring, identical to draw-create. " +
     "Unknown/failed properties are reported per-property in 'updated' (ok=false) without aborting the rest. " +
-    "Requires a Volt-class executor exposing the `Drawing` table (type-guarded). If the id is unknown it returns " +
-    '{ error }; on a non-Volt executor it returns { error = "Drawing is not available in this executor." }. ' +
+    "Requires the `Drawing` table (type-guarded). If the id is unknown it returns " +
+    '{ error }; on an executor without it, it returns { error = "Drawing is not available in this executor." }. ' +
     "Returns { id, updated[] } or { error }.",
   category: "Drawing",
   mutatesState: true,

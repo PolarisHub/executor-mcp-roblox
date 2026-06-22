@@ -3,13 +3,13 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "list-rendered-instances",
-  title: "getrendered — list instances currently being rendered (Volt)",
+  title: "getrendered — list instances currently being rendered",
   description:
     "Enumerate the instances the engine is currently rendering via getrendered() and return { count, samples }, where " +
     "each sample is { class, name, path }. This is the set of objects actually on screen this frame — useful for ESP/" +
     "render auditing, spotting which parts/GUIs are visible, or correlating a render spike with specific instances. The " +
     "full count is reported even though only a capped sample of entries is returned. " +
-    "Requires getrendered (Volt-class executors) — type-guarded and pcall-wrapped, returning { error } when missing or " +
+    "Requires getrendered — type-guarded and pcall-wrapped, returning { error } when missing or " +
     "on failure. Returns { count, truncated, samples } or { error }.",
   category: "Inspection",
   input: z.object({

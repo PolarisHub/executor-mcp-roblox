@@ -10,7 +10,7 @@ export default defineTool({
     "and to surface any syntax error. NOTE: this is executor-side file I/O — the connector runs INSIDE the executor, " +
     "so the path is relative to the executor's workspace directory on the host machine, NOT the Roblox game. This " +
     "tool intentionally does NOT call the compiled function; it only reports whether compilation succeeded. " +
-    "Requires a Volt-class executor exposing the UNC function loadfile(path) -> (fn?, err?). The call is type-guarded " +
+    "Requires the UNC function loadfile(path) -> (fn?, err?). The call is type-guarded " +
     "and pcall-wrapped: if loadfile is missing you get { error = 'loadfile is not available in this executor.' }. On " +
     "a compile error loadfile returns nil plus an error string, surfaced as { compiled = false, error }. " +
     "Returns { path, compiled, error? } or { error }.",

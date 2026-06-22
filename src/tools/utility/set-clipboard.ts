@@ -12,7 +12,7 @@ export default defineTool({
   description:
     "WRITES HOST STATE — copies the given text to the host machine's OS clipboard via setclipboard(text), falling " +
     "back to toclipboard(text) on executors that use that name. This overwrites whatever is currently on the " +
-    "clipboard. Requires a Volt-class executor exposing one of these functions. The call is type-guarded and " +
+    "clipboard. Requires one of these functions. The call is type-guarded and " +
     "pcall-wrapped: if neither is present you get { error = 'setclipboard is not available in this executor.' }. " +
     "Returns { ok, length } or { error }.",
   category: "Utility",

@@ -4,14 +4,14 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "cache-replace",
-  title: "cache.replace — swap one instance for another in the executor cache (Volt)",
+  title: "cache.replace — swap one instance for another in the executor cache",
   description:
     "Replace the executor's cached reference for one Instance with another via cache.replace(a, b). After the swap, " +
     "every script that indexes instance A through the cache transparently receives instance B instead — a powerful " +
     "redirection primitive for impersonating one object with another (e.g. pointing a checkpoint, hitbox, or remote " +
     "wrapper at a substitute you control). Both targets are resolved from Luau path/expressions via " +
     "loadstring('return ' .. expr). " +
-    "Requires a Volt-class executor exposing the cache library (type(cache)=='table') with cache.replace — both are " +
+    "Requires the cache library (type(cache)=='table') with cache.replace — both are " +
     "type-guarded and the call is pcall-wrapped, returning { error } when missing or on failure. Mutates live " +
     "executor state. Returns { ok } or { error }.",
   category: "Memory Scan",

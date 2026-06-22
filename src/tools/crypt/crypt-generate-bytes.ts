@@ -3,13 +3,13 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "crypt-generate-bytes",
-  title: "Generate random bytes with crypt.generatebytes (Volt-class executor)",
+  title: "Generate random bytes with crypt.generatebytes",
   description:
     "Generate `size` cryptographically random bytes using the executor's `crypt.generatebytes(size)`. The bytes are " +
     "returned as a Base64 string (decode with crypt-base64-decode if you need the raw bytes). This is a pure, " +
     "side-effect-free compute that runs entirely in-game. The default size is 16; the request is clamped to a sane " +
     "1..1024 range. " +
-    "Requires a Volt-class executor exposing `crypt.generatebytes`; on a plain/non-Volt executor it returns { error } " +
+    "Requires `crypt.generatebytes`; on an executor without it, it returns { error } " +
     "instead of throwing. The call is pcall-guarded. " +
     "Returns { bytes } or { error }.",
   category: "Crypt",

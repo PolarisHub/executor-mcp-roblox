@@ -9,7 +9,7 @@ export default defineTool({
     "Delete a single file from the executor's workspace folder. NOTE: this is executor-side file I/O — the connector " +
     "runs INSIDE the executor, so the path is relative to the executor's workspace directory on the host machine, NOT " +
     "the Roblox game. This is destructive and cannot be undone. " +
-    "Requires a Volt-class executor exposing the UNC function delfile(path). The call is type-guarded and " +
+    "Requires the UNC function delfile(path). The call is type-guarded and " +
     "pcall-wrapped: if delfile is missing you get { error = 'delfile is not available in this executor.' }, and any " +
     "failure (missing file, permission) returns { error = <message> }. " +
     "Returns { path, ok = true } or { error }.",

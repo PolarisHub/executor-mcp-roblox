@@ -32,9 +32,9 @@ const ScalarCriterion = z.union([z.string(), z.number(), z.boolean()]);
 
 export default defineTool({
   name: "filter-gc",
-  title: "filtergc — query the GC heap for functions or tables by structural criteria (Volt)",
+  title: "filtergc — query the GC heap for functions or tables by structural criteria",
   description:
-    "The headline Volt reflection tool: run the executor's UNC filtergc(filterType, options) against the entire live " +
+    "The headline reflection tool: run the executor's UNC filtergc(filterType, options) against the entire live " +
     "garbage collector to find Lua closures or tables that match a structural fingerprint, without writing any Luau by " +
     "hand. Far more targeted than a raw getgc() sweep — you describe WHAT you are looking for and the executor returns " +
     "only the objects that match. " +
@@ -45,7 +45,7 @@ export default defineTool({
     "(record of exact key=value pairs), Metatable? } — e.g. find the player-data table that has a 'Coins' key. " +
     "Each match is encoded to a compact summary: functions report { source, line, name } (via debug.info) and tables " +
     "report { address, keyCount }. Output is capped by 'limit'. " +
-    "Requires a Volt-class executor exposing filtergc (type-guarded; returns { error } on a non-Volt executor) and " +
+    "Requires filtergc (type-guarded; returns { error } where it is unavailable) and " +
     "every call is pcall-wrapped so a locked object can never abort the query. Returns { filterType, matchCount, " +
     "truncated, matches } or { error }.",
   category: "Reverse Engineering",

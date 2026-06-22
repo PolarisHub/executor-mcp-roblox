@@ -14,7 +14,7 @@ export default defineTool({
     "includes any remote/bindable that is not a descendant of `game`, deduping across both sources. It complements " +
     "get-nil-instances / find-hidden-instances by narrowing to just the communication-channel classes and giving a " +
     "ready-to-inspect list. Returns { count, byClass, truncated, samples: [{ class, name, location }] }, capped. " +
-    "Requires getnilinstances (Volt-class executors); getinstances is used additionally when present. Degrades with a " +
+    "Requires getnilinstances; getinstances is used additionally when present. Degrades with a " +
     "clear error if neither is available.",
   category: "Actors & Hidden",
   input: z.object({

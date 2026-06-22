@@ -10,7 +10,7 @@ export default defineTool({
     "script, GUI, or other object is kept alive by a reference but is unreachable from the game tree, so it never " +
     "shows up in the Explorer or normal descendant scans. This returns the total count, a byClass breakdown " +
     "(ClassName -> count) computed across ALL nil instances, and a capped samples list (each with class, name, and " +
-    "full path) for inspection. Requires getnilinstances (Volt-class executors); degrades with a clear error " +
+    "full path) for inspection. Requires getnilinstances; degrades with a clear error " +
     "otherwise.",
   category: "Actors & Hidden",
   input: z.object({

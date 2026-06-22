@@ -12,7 +12,7 @@ import wsList from "./ws-list.js";
 
 /**
  * Low-level RakNet packet tools, the outbound HTTP request tool, and the WebSocket
- * tools (ws-connect/send/receive/close/list) — all Volt/sUNC-only.
+ * tools (ws-connect/send/receive/close/list).
  */
 export const networkTools: Tool[] = [
   packetSpy,

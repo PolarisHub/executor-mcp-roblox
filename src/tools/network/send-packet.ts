@@ -9,11 +9,11 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "send-packet",
-  title: "Send a custom RakNet packet (Volt)",
+  title: "Send a custom RakNet packet",
   description:
     "WRITES LIVE GAME STATE — transmits a raw packet. Sends a custom OUTGOING low-level packet via raknet.send " +
     "with the given payload (a hex string, converted to a byte array), priority, reliability, and ordering " +
-    "channel. Requires a Volt-class executor with the `raknet` library. WARNING: malformed packets or wrong " +
+    "channel. Requires the `raknet` library. WARNING: malformed packets or wrong " +
     "metadata can disconnect the client or break protocol behavior — only send payloads you understand.",
   category: "Network",
   mutatesState: true,
@@ -41,7 +41,7 @@ export default defineTool({
   async execute({ dataHex, priority, reliability, orderingChannel, threadContext }, ctx) {
     const source = `
 if type(raknet) ~= "table" or type(raknet.send) ~= "function" then
-  return { error = "raknet.send is not available in this executor (requires Volt)." }
+  return { error = "raknet.send is not available in this executor." }
 end
 local hex = ${q(dataHex)}:gsub("%s", "")
 if #hex == 0 then return { error = "dataHex is empty." } end

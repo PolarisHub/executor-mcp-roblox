@@ -4,14 +4,14 @@ import { PRELUDE } from "../_shared/luau.js";
 
 export default defineTool({
   name: "get-stack",
-  title: "debug.getstack — read live Luau stack slots at a level (Volt)",
+  title: "debug.getstack — read live Luau stack slots at a level",
   description:
     "Read the raw values currently sitting on the Luau stack at a given call level via the executor's debug.getstack. " +
     "Without 'index' it returns every live stack slot at that level as an encoded list (Instances/EnumItems/tables are " +
     "flattened to a JSON-friendly shape); with 'index' it returns just that one slot's encoded value. This exposes the " +
     "in-flight locals and temporaries of a running function — the values a frame is actively working with — letting you " +
     "snapshot what a callback or hooked function holds at the moment your code runs. " +
-    "Requires debug.getstack (Volt-class executors) — type-guarded and pcall-wrapped, returning { error } when missing " +
+    "Requires debug.getstack — type-guarded and pcall-wrapped, returning { error } when missing " +
     "or on failure. Returns { level, index?, value } / { level, count, values } or { error }.",
   category: "Reverse Engineering",
   input: z.object({

@@ -16,8 +16,8 @@ export default defineTool({
     "workspace folder via saveinstance. By default it dumps the whole DataModel; pass instancePath to dump just " +
     "that subtree. This is a heavy operation that can take a while and produce a large file. Because executors " +
     "differ on the exact signature, this tries several forms in order: saveinstance({ FilePath = fileName }), then " +
-    "saveinstance(instance, fileName) / saveinstance(instance), then saveinstance(). Requires a Volt-class " +
-    "executor exposing saveinstance. The call is type-guarded and pcall-wrapped: if saveinstance is missing you " +
+    "saveinstance(instance, fileName) / saveinstance(instance), then saveinstance(). Requires saveinstance. " +
+    "The call is type-guarded and pcall-wrapped: if saveinstance is missing you " +
     "get { error = 'saveinstance is not available in this executor.' }. Returns { saved, note } or { error }.",
   category: "Utility",
   mutatesState: true,

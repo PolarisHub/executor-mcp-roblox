@@ -11,13 +11,13 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "get-script-bytecode",
-  title: "getscriptbytecode — dump a script's compiled bytecode (Volt)",
+  title: "getscriptbytecode — dump a script's compiled bytecode",
   description:
     "Retrieve the compiled Luau bytecode for a script via the executor's getscriptbytecode. The script is resolved " +
     "from a Luau expression (typically a path to a LuaSourceContainer, e.g. " +
     "'game.ReplicatedStorage.Module') via loadstring('return ' .. expr). Returns the total byte count and a hex " +
     "preview of the first `previewBytes` bytes (the full bytecode is not shipped across the bridge). " +
-    "Requires getscriptbytecode (Volt-class executors) — type-guarded and pcall-wrapped, returning { error } when " +
+    "Requires getscriptbytecode — type-guarded and pcall-wrapped, returning { error } when " +
     "missing or on failure. Returns { byteCount, hexPreview } or { error }.",
   category: "Reverse Engineering",
   input: z.object({

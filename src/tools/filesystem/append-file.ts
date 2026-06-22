@@ -10,7 +10,7 @@ export default defineTool({
     "exist. Existing contents are preserved (unlike write-file, which overwrites). NOTE: this is executor-side file " +
     "I/O — the connector runs INSIDE the executor, so the path is relative to the executor's workspace directory on " +
     "the host machine, NOT the Roblox game. " +
-    "Requires a Volt-class executor exposing the UNC function appendfile(path, content). The call is type-guarded and " +
+    "Requires the UNC function appendfile(path, content). The call is type-guarded and " +
     "pcall-wrapped: if appendfile is missing you get { error = 'appendfile is not available in this executor.' }, and " +
     "any failure returns { error = <message> }. " +
     "Returns { path, ok = true } or { error }.",

@@ -4,14 +4,14 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "crypt-encrypt",
-  title: "Symmetrically encrypt data with crypt.encrypt (Volt-class executor)",
+  title: "Symmetrically encrypt data with crypt.encrypt",
   description:
     "Encrypt a string with the executor's `crypt.encrypt(data, key, iv?, mode?)`. The key is a Base64 string " +
     "(see crypt-generate-key). An optional Base64 initialization vector (iv) and an optional cipher mode (e.g. " +
     "'CBC', 'CTR') may be supplied; when omitted the executor picks/derives them. The function returns the " +
     "ciphertext plus the iv actually used, both of which are reported. This is a pure, side-effect-free compute " +
     "that runs entirely in-game. " +
-    "Requires a Volt-class executor exposing `crypt.encrypt`; on a plain/non-Volt executor it returns { error } " +
+    "Requires `crypt.encrypt`; on an executor without it, it returns { error } " +
     "instead of throwing. The call is pcall-guarded so a bad key/iv degrades to a clean error. " +
     "Returns { ciphertext, iv } or { error }.",
   category: "Crypt",

@@ -3,13 +3,13 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "draw-remove",
-  title: "Remove a single Drawing object by id — REQUIRES a Volt-class executor",
+  title: "Remove a single Drawing object by id",
   description:
     "Destroys one Drawing overlay created by draw-create: looks the handle up by its integer id in " +
     "getgenv().__mcp_drawings, calls handle:Remove(), and clears the registry slot so list-drawings no longer " +
     "reports it. Use it to clean up a single ESP element while leaving the rest of the overlay intact. " +
-    "Requires a Volt-class executor exposing the `Drawing` table (type-guarded); the :Remove() call is " +
-    "pcall-guarded. If the id is unknown it returns { removed = false, error }; on a non-Volt executor it returns " +
+    "Requires the `Drawing` table (type-guarded); the :Remove() call is " +
+    "pcall-guarded. If the id is unknown it returns { removed = false, error }; on an executor without it, it returns " +
     '{ error = "Drawing is not available in this executor." }. ' +
     "Returns { id, removed } or { error }.",
   category: "Drawing",

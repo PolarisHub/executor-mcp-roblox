@@ -4,12 +4,12 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "crypt-base64-encode",
-  title: "Base64-encode a string via the executor crypt library (Volt-class executor)",
+  title: "Base64-encode a string via the executor crypt library",
   description:
     "Encode an arbitrary string to Base64 using the executor's `crypt` library. This is a pure, side-effect-free " +
     "compute that runs entirely in-game. The encoder probes BOTH the flat form (crypt.base64encode) and the " +
     "namespaced form (crypt.base64.encode), using whichever the executor provides. " +
-    "Requires a Volt-class executor exposing a `crypt` table; on a plain/non-Volt executor (no crypt, or no base64 " +
+    "Requires a `crypt` table; on an executor without it (no crypt, or no base64 " +
     "encoder under either name) it returns { error } instead of throwing. The call is pcall-guarded so a malformed " +
     "input degrades to a clean error. " +
     "Returns { encoded } or { error }.",

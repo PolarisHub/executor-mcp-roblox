@@ -10,7 +10,7 @@ export default defineTool({
     "normal hierarchy — nil-parented, detached from the DataModel, running inside an Actor, or living in CoreGui. " +
     "For each running script this returns its name, class, full path, where it actually lives (location), and whether " +
     "it is still reachable from the game tree (inTree). This surfaces active anti-detection / obfuscated logic that " +
-    "is running but hidden from the Explorer. Requires getrunningscripts (Volt-class executors); degrades with a " +
+    "is running but hidden from the Explorer. Requires getrunningscripts; degrades with a " +
     "clear error otherwise. Output is capped at 300 scripts with a truncated flag.",
   category: "Actors & Hidden",
   input: z.object({

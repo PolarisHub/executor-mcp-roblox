@@ -9,12 +9,12 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "block-packets",
-  title: "Block outgoing RakNet packets by criteria (Volt)",
+  title: "Block outgoing RakNet packets by criteria",
   description:
     "WRITES LIVE GAME STATE — installs a RakNet send hook that DROPS matching outgoing packets. A packet is " +
     "blocked when its Size >= minSize (if set) and/or its payload contains containsHex (if set); with neither " +
     "criterion every outgoing packet is blocked (dangerous). action='start' installs the hook, 'stop' removes " +
-    "it. Requires a Volt-class executor with the `raknet` library. WARNING: blocking outgoing traffic can break " +
+    "it. Requires the `raknet` library. WARNING: blocking outgoing traffic can break " +
     "the game, freeze replication, or disconnect the client — use narrow criteria and stop promptly.",
   category: "Network",
   mutatesState: true,
@@ -43,7 +43,7 @@ export default defineTool({
 if type(getgenv) ~= "function" then return { error = "getgenv is not available; cannot maintain the packet blocker." } end
 local __g = getgenv()
 if type(raknet) ~= "table" or type(raknet.add_send_hook) ~= "function" then
-  return { error = "raknet.add_send_hook is not available in this executor (requires Volt)." }
+  return { error = "raknet.add_send_hook is not available in this executor." }
 end
 
 if "${action}" == "start" then

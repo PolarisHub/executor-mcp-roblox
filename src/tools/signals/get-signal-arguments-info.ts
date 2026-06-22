@@ -12,7 +12,7 @@ export default defineTool({
     "tags, optionality, and per-entry detail) so you can precisely reconstruct a signal's payload when crafting a " +
     "fire-signal / replicate-signal call. Pass the instance that owns the signal plus the signal member name (or " +
     "leave signalName empty if instancePath already resolves to the signal). Requires the getsignalargumentsinfo " +
-    "executor function (Volt and similar full-API executors); degrades with a clear { error } if unavailable. " +
+    "executor function; degrades with a clear { error } if unavailable. " +
     "Returns { Signal, Instance?, ArgumentsInfo } with nested values mapped through a safe serializer.",
   category: "Signals & Connections",
   input: z.object({

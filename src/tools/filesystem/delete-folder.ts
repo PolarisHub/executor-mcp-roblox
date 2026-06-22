@@ -9,7 +9,7 @@ export default defineTool({
     "Delete a folder (and typically its contents) from the executor's workspace. NOTE: this is executor-side file " +
     "I/O — the connector runs INSIDE the executor, so the path is relative to the executor's workspace directory on " +
     "the host machine, NOT the Roblox game. This is destructive and recursive on most executors; it cannot be undone. " +
-    "Requires a Volt-class executor exposing the UNC function delfolder(path). The call is type-guarded and " +
+    "Requires the UNC function delfolder(path). The call is type-guarded and " +
     "pcall-wrapped: if delfolder is missing you get { error = 'delfolder is not available in this executor.' }, and " +
     "any failure (missing folder, permission) returns { error = <message> }. " +
     "Returns { path, ok = true } or { error }.",

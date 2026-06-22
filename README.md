@@ -1,8 +1,8 @@
 # Roblox Executor MCP Server
 
-An MCP server that lets an AI client drive a running Roblox executor. The model calls a tool, the server runs Luau in your game, and you get structured data back. With that an agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, and a lot more.
+An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. With that an agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, and a lot more.
 
-It ships **225 tools** across 21 categories and runs against a Volt-class executor.
+It ships **225 tools** across 21 categories.
 
 ## What's in the box
 
@@ -13,7 +13,7 @@ Plenty, but the things you'll reach for first:
 - Remotes. Inventory them, read their argument shapes, watch traffic, block or replay calls, down to raw RakNet packet capture.
 - Instrumentation. Hook-and-log, count calls, spoof return values, profile durations.
 - Finding hidden things. Actor scripts, nil-parented instances, hidden GUIs, `gethui`, detached remotes.
-- Volt extras. Filesystem, crypt, drawing, fast flags, WebSocket, HTTP.
+- Extras. Filesystem, crypt, drawing, fast flags, WebSocket, HTTP.
 
 Run `list-tools` once you're connected for the full catalog grouped by category.
 
@@ -63,14 +63,14 @@ The server talks MCP over stdin/stdout, so point your client (Claude, Cursor, Wi
 
 ### Connecting the game
 
-Paste this into your executor, or drop it in autoexec:
+Paste this in and run it, or add it to autoexec:
 
 ```lua
 getgenv().BridgeURL = "localhost:16384"
 loadstring(game:HttpGet("http://" .. getgenv().BridgeURL .. "/connector.luau"))()
 ```
 
-It pulls the connector from the server, opens a WebSocket to `ws://<BridgeURL>/bridge`, sends a `hello` with the executor name and the capabilities it probed, and after that just runs whatever the server asks and replies with JSON. The message shapes live in [src/domain/protocol/messages.ts](src/domain/protocol/messages.ts) if you want the details.
+It pulls the connector from the server, opens a WebSocket to `ws://<BridgeURL>/bridge`, sends a `hello` with its name and the capabilities it found, and after that just runs whatever the server asks and replies with JSON. The message shapes live in [src/domain/protocol/messages.ts](src/domain/protocol/messages.ts) if you want the details.
 
 ## Configuration
 

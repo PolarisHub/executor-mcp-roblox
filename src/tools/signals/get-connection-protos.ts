@@ -10,7 +10,7 @@ export default defineTool({
     "RBXScriptSignal (selected by zero-based index) via debug.getprotos. Protos are the nested closures a handler " +
     "creates — callbacks, deferred tasks, helper lambdas — so this maps out the sub-functions you may want to hook " +
     "or inspect next. Each proto is reported via the standard function descriptor (Source, Name, LineDefined, " +
-    "NumParams, IsVararg, What, Pointer). Requires getconnections and debug.getprotos (Volt-class executor); " +
+    "NumParams, IsVararg, What, Pointer). Requires getconnections and debug.getprotos; " +
     "returns a clear { error } if either is missing or the connection has no Lua Function. " +
     "Returns { Signal, Instance?, ConnectionIndex, Function, Protos: [...], Count }.",
   category: "Signals & Connections",

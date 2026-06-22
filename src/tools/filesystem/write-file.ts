@@ -9,7 +9,7 @@ export default defineTool({
     "Write content to a file in the executor's workspace folder, creating it if needed and OVERWRITING any existing " +
     "contents. NOTE: this is executor-side file I/O — the connector runs INSIDE the executor, so the path is relative " +
     "to the executor's workspace directory on the host machine, NOT the Roblox game. " +
-    "Requires a Volt-class executor exposing the UNC function writefile(path, content). The call is type-guarded and " +
+    "Requires the UNC function writefile(path, content). The call is type-guarded and " +
     "pcall-wrapped: if writefile is missing you get { error = 'writefile is not available in this executor.' }, and " +
     "any write failure (bad path, denied extension, permission) returns { error = <message> }. " +
     "Returns { path, ok = true } or { error }.",

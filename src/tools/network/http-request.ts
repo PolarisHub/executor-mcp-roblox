@@ -16,8 +16,8 @@ export default defineTool({
   description:
     "SENDS A REAL OUTBOUND HTTP REQUEST from the Roblox client via the executor's request({ Url, Method, Headers, " +
     "Body }) (falling back to http_request, then syn.request). Unlike Roblox's HttpService this can hit arbitrary " +
-    "hosts and set custom headers. The response body is capped at ~100 KB. Requires a Volt-class executor exposing " +
-    "one of these functions. The call is type-guarded and pcall-wrapped: if none is present you get " +
+    "hosts and set custom headers. The response body is capped at ~100 KB. Requires one of these functions to be " +
+    "available. The call is type-guarded and pcall-wrapped: if none is present you get " +
     "{ error = 'request is not available in this executor.' }, and a transport failure returns { error }. Returns " +
     "{ statusCode, success, headers, body, statusMessage } or { error }.",
   category: "Network",

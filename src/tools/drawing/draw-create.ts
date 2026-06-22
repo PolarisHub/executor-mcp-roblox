@@ -24,7 +24,7 @@ function valueResolver(expr: string): string {
 
 export default defineTool({
   name: "draw-create",
-  title: "Create a Drawing object (ESP/debug overlay) — REQUIRES a Volt-class executor",
+  title: "Create a Drawing object (ESP/debug overlay)",
   description:
     "Creates a new on-screen overlay object via the executor `Drawing` library (used for ESP boxes, tracers, " +
     "name tags, and debug HUDs) and registers it so it survives across tool calls. Calls Drawing.new(type) for " +
@@ -37,7 +37,7 @@ export default defineTool({
     "Visible(bool), Color(Color3), Transparency(number 0..1), ZIndex(number). Per type — Line: From, To, Thickness; " +
     "Text: Text, Size, Position, Center, Outline; Circle: Center, Radius, NumSides, Thickness, Filled; Square: Size, " +
     "Position, Thickness, Filled. " +
-    "Requires a Volt-class executor exposing the `Drawing` table (type-guarded); on a non-Volt executor it returns " +
+    "Requires the `Drawing` table (type-guarded); on an executor without it, it returns " +
     '{ error = "Drawing is not available in this executor." }. Every call is pcall-guarded. ' +
     "Returns { id, type, applied[] } or { error }.",
   category: "Drawing",

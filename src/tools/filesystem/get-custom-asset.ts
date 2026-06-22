@@ -11,7 +11,7 @@ export default defineTool({
     "executor, so the path is relative to the executor's workspace directory on the host machine, NOT the Roblox " +
     "game. This is marked state-mutating because on most executors getcustomasset COPIES the file into the Roblox " +
     "content cache as a side effect. " +
-    "Requires a Volt-class executor exposing the UNC function getcustomasset(path) -> string. The call is " +
+    "Requires the UNC function getcustomasset(path) -> string. The call is " +
     "type-guarded and pcall-wrapped: if getcustomasset is missing you get " +
     "{ error = 'getcustomasset is not available in this executor.' }, and any failure returns { error = <message> }. " +
     "Returns { path, asset } or { error }.",

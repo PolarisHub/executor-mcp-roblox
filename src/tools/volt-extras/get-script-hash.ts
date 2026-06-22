@@ -10,12 +10,12 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "get-script-hash",
-  title: "getscripthash — content hash of a script (Volt)",
+  title: "getscripthash — content hash of a script",
   description:
     "Compute the content hash of a script via the executor's getscripthash. The script is resolved from a Luau " +
     "expression (typically a path to a LuaSourceContainer, e.g. 'game.ReplicatedStorage.Module') via " +
     "loadstring('return ' .. expr). Handy for detecting when a script's bytecode/source changes between two checks. " +
-    "Requires getscripthash (Volt-class executors) — type-guarded and pcall-wrapped, returning { error } when missing " +
+    "Requires getscripthash — type-guarded and pcall-wrapped, returning { error } when missing " +
     "or on failure. Returns { hash } or { error }.",
   category: "Reverse Engineering",
   input: z.object({

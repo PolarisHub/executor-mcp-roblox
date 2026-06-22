@@ -13,8 +13,8 @@ export default defineTool({
   description:
     "WRITES EXECUTOR STATE — queues a chunk of Luau source via queueonteleport(code) so it runs automatically " +
     "after the NEXT teleport completes, in the destination place. This is how scripts survive a Roblox teleport: " +
-    "the queued code persists across the place change and executes once the new place loads. Requires a Volt-class " +
-    "executor exposing queueonteleport. The call is type-guarded and pcall-wrapped: if queueonteleport is missing " +
+    "the queued code persists across the place change and executes once the new place loads. Requires " +
+    "queueonteleport. The call is type-guarded and pcall-wrapped: if queueonteleport is missing " +
     "you get { error = 'queueonteleport is not available in this executor.' }. Returns { queued } or { error }.",
   category: "Utility",
   mutatesState: true,

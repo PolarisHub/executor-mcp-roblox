@@ -4,12 +4,12 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "crypt-hash",
-  title: "Hash a string with crypt.hash (sha1/sha256/sha384/sha512/md5) (Volt-class executor)",
+  title: "Hash a string with crypt.hash (sha1/sha256/sha384/sha512/md5)",
   description:
     "Compute a cryptographic digest of a string using the executor's `crypt.hash(data, algorithm)`. This is a pure, " +
     "side-effect-free compute that runs entirely in-game. Supported algorithms are sha1, sha256 (default), sha384, " +
     "sha512, and md5; the result is the hex digest string returned by the executor. " +
-    "Requires a Volt-class executor exposing `crypt.hash`; on a plain/non-Volt executor (no crypt table or no hash " +
+    "Requires `crypt.hash`; on an executor without it (no crypt table or no hash " +
     "function) it returns { error } instead of throwing. The call is pcall-guarded so an unsupported algorithm " +
     "degrades to a clean error. " +
     "Returns { hash, algorithm } or { error }.",

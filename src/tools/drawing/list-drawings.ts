@@ -3,13 +3,13 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "list-drawings",
-  title: "List all MCP-managed Drawing objects — REQUIRES a Volt-class executor",
+  title: "List all MCP-managed Drawing objects",
   description:
     "Read-only inventory of the Drawing overlay this server manages: walks getgenv().__mcp_drawings and returns " +
     "each registered object's { id, type, visible } so you can see what is currently on screen before updating or " +
     "removing it. 'visible' reflects the live handle.Visible property (pcall-read; null if it could not be read). " +
     "Does NOT touch the screen or any handle. " +
-    "Requires a Volt-class executor exposing the `Drawing` table (type-guarded). On a non-Volt executor it returns " +
+    "Requires the `Drawing` table (type-guarded). On an executor without it, it returns " +
     "{ error = \"Drawing is not available in this executor.\" }. The list is capped by 'limit'. " +
     "Returns { count, truncated, drawings[] } or { error }.",
   category: "Drawing",

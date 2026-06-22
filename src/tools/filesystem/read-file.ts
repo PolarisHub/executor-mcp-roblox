@@ -9,7 +9,7 @@ export default defineTool({
     "Read the entire contents of a file from the executor's workspace folder and return it as a string. " +
     "NOTE: this is executor-side file I/O — the connector runs INSIDE the executor, so paths are relative to the " +
     "executor's workspace directory on the host machine, NOT anything in the Roblox game/DataModel. " +
-    "Requires a Volt-class executor exposing the UNC function readfile(path). The call is type-guarded and " +
+    "Requires the UNC function readfile(path). The call is type-guarded and " +
     "pcall-wrapped: if readfile is missing you get { error = 'readfile is not available in this executor.' }, and " +
     "any read failure (missing file, permission) returns { error = <message> }. " +
     "Returns { path, content } or { error }.",

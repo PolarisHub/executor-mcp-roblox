@@ -14,7 +14,7 @@ export default defineTool({
     "per Actor) of the LuaSourceContainer scripts inside it — each with name, class, full path, and whether the script " +
     "is currently executing (running, determined by membership in getrunningscripts). This complements list-actors by " +
     "adding the running flag, the descendant count, and single-target resolution from a Luau expression. Requires " +
-    "getactors (Volt-class executors); getrunningscripts is used additionally when present (running falls back to false " +
+    "getactors; getrunningscripts is used additionally when present (running falls back to false " +
     "if it is unavailable). Returns a single Actor object when actorPath is given, otherwise { actorCount, truncated, " +
     "actors: [...] }. Degrades with a clear error if getactors is missing or actorPath does not resolve to an Actor.",
   category: "Actors & Hidden",

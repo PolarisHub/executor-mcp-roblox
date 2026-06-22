@@ -11,7 +11,7 @@ export default defineTool({
     "inside an Actor / CoreGui. An instance is considered hidden when it is not reachable from `game` (__inTree is " +
     "false). Returns a per-class tally (byClass) plus a capped list of samples, each describing the instance's class, " +
     "name, full path, and exactly how it is hidden (location). This is the broadest sweep for anything an exploit/anti-" +
-    "detection script has stashed off the normal hierarchy. Requires getinstances (Volt-class executors); degrades " +
+    "detection script has stashed off the normal hierarchy. Requires getinstances; degrades " +
     "with a clear error otherwise.",
   category: "Actors & Hidden",
   input: z.object({

@@ -8,7 +8,7 @@ import { defineTool } from "../../application/tool/define-tool.js";
  */
 export default defineTool({
   name: "ws-close",
-  title: "ws:Close — close a WebSocket and free its slot (Volt/sUNC)",
+  title: "ws:Close — close a WebSocket and free its slot",
   description:
     "WRITES LIVE GAME STATE — closes a WebSocket previously opened with ws-connect, addressed by its registry id. Calls " +
     "socket:Close() (pcall-wrapped), marks the entry closed, and removes it from the getgenv registry so the id no " +

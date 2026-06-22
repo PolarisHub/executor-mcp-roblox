@@ -4,12 +4,12 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "crypt-decrypt",
-  title: "Symmetrically decrypt data with crypt.decrypt (Volt-class executor)",
+  title: "Symmetrically decrypt data with crypt.decrypt",
   description:
     "Decrypt a ciphertext with the executor's `crypt.decrypt(data, key, iv, mode?)`. Supply the same Base64 key and " +
     "iv that were used to encrypt, plus the optional cipher mode if a non-default mode was used. The function " +
     "returns the recovered plaintext. This is a pure, side-effect-free compute that runs entirely in-game. " +
-    "Requires a Volt-class executor exposing `crypt.decrypt`; on a plain/non-Volt executor it returns { error } " +
+    "Requires `crypt.decrypt`; on an executor without it, it returns { error } " +
     "instead of throwing. The call is pcall-guarded so a wrong key/iv/mode degrades to a clean error. " +
     "Returns { plaintext } or { error }.",
   category: "Crypt",

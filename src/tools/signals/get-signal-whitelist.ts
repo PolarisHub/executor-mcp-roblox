@@ -10,8 +10,8 @@ export default defineTool({
     "executor's getsignalwhitelist. This is the global allow-list that can-signal-replicate / replicate-signal " +
     'check against, so it answers "which signals can I drive server-side?" up front, without probing them one at ' +
     "a time. The whitelist is typically large (180+ entries), so each entry is mapped through a safe serializer " +
-    "and the output is capped at `limit`. Requires the getsignalwhitelist executor function (Volt and similar " +
-    "full-API executors); degrades with a clear { error } if unavailable. Returns { Count, Truncated, Signals }.",
+    "and the output is capped at `limit`. Requires the getsignalwhitelist executor function; " +
+    "degrades with a clear { error } if unavailable. Returns { Count, Truncated, Signals }.",
   category: "Signals & Connections",
   input: z.object({
     limit: z

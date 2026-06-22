@@ -11,7 +11,7 @@ export default defineTool({
     "scope — typically shared state, config tables, cached services or other functions — so this reveals the live " +
     "context a hidden event handler operates on. Each upvalue is reported with its typeof and a readable encoded " +
     "value (instances become full names, tables/functions become descriptors). Requires getconnections and " +
-    "debug.getupvalues (Volt-class executor); returns a clear { error } if either is missing or the connection has " +
+    "debug.getupvalues; returns a clear { error } if either is missing or the connection has " +
     "no Lua Function. Returns { Signal, Instance?, ConnectionIndex, Function, Upvalues: [...], Count }.",
   category: "Signals & Connections",
   input: z.object({

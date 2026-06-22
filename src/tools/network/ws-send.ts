@@ -9,7 +9,7 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "ws-send",
-  title: "ws:Send — send a frame over an open WebSocket (Volt/sUNC)",
+  title: "ws:Send — send a frame over an open WebSocket",
   description:
     "WRITES LIVE GAME STATE — sends a text frame over a WebSocket previously opened with ws-connect, addressed by its " +
     "registry id. Looks up getgenv().__mcp_ws[id], verifies the socket is still open, and calls socket:Send(message). " +

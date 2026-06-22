@@ -10,7 +10,7 @@ export default defineTool({
   title: "Read the current FPS cap (sUNC getfpscap)",
   description:
     "Read the executor's current render frame-rate cap via getfpscap(). Returns the cap as a number; 0 means " +
-    "uncapped. Requires a Volt-class executor exposing getfpscap. The call is type-guarded and pcall-wrapped: if " +
+    "uncapped. Requires getfpscap. The call is type-guarded and pcall-wrapped: if " +
     "getfpscap is missing you get { error = 'getfpscap is not available in this executor.' }. Returns { fpsCap } " +
     "or { error }.",
   category: "Utility",

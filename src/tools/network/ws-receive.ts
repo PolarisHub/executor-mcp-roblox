@@ -10,7 +10,7 @@ import { defineTool } from "../../application/tool/define-tool.js";
  */
 export default defineTool({
   name: "ws-receive",
-  title: "Read buffered WebSocket frames (Volt/sUNC)",
+  title: "Read buffered WebSocket frames",
   description:
     "Read the inbound frames buffered for a WebSocket opened with ws-connect, addressed by its registry id. Returns the " +
     "captured { text, t } records newest-first, capped at `limit`, plus whether the socket is still open and the total " +

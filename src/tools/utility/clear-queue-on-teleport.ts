@@ -9,8 +9,8 @@ export default defineTool({
   title: "Clear teleport-queued code (sUNC clearqueueonteleport)",
   description:
     "WRITES EXECUTOR STATE — clears any code previously queued with queueonteleport, via " +
-    "clearqueueonteleport(). After this, nothing will auto-run on the next teleport. Requires a Volt-class " +
-    "executor exposing clearqueueonteleport. The call is type-guarded and pcall-wrapped: if clearqueueonteleport " +
+    "clearqueueonteleport(). After this, nothing will auto-run on the next teleport. Requires " +
+    "clearqueueonteleport. The call is type-guarded and pcall-wrapped: if clearqueueonteleport " +
     "is missing you get { error = 'clearqueueonteleport is not available in this executor.' }. Returns " +
     "{ cleared } or { error }.",
   category: "Utility",

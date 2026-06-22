@@ -12,7 +12,7 @@ export default defineTool({
     "that is normally gated behind engine-internal signals. When false, replicate-signal will be rejected and you " +
     "must use a different vector. Use this to pre-flight a signal before attempting replication. Pass the instance " +
     "that owns the signal plus the signal member name (or leave signalName empty if instancePath already resolves " +
-    "to the signal). Requires the cansignalreplicate executor function (Volt and similar full-API executors); " +
+    "to the signal). Requires the cansignalreplicate executor function; " +
     "degrades with a clear { error } if unavailable. Returns { Signal, Instance?, CanReplicate, Note }.",
   category: "Signals & Connections",
   input: z.object({

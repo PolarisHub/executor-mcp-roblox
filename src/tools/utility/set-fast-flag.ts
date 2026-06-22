@@ -14,7 +14,7 @@ export default defineTool({
     "WRITES CLIENT STATE — overrides a Roblox engine FastFlag for the running client via setfflag(name, value). " +
     "The value is supplied as a string and coerced by the executor to the flag's native type (bool/int/string). " +
     "This changes engine behavior at runtime and can destabilize the client if a flag is set to an invalid value. " +
-    "Requires a Volt-class executor exposing setfflag. The call is type-guarded and pcall-wrapped: if setfflag is " +
+    "Requires setfflag. The call is type-guarded and pcall-wrapped: if setfflag is " +
     "missing you get { error = 'setfflag is not available in this executor.' }. Returns { name, value, ok } or " +
     "{ error }.",
   category: "Utility",

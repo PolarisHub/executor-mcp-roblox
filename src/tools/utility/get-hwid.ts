@@ -9,8 +9,8 @@ export default defineTool({
   title: "Read the host hardware ID (sUNC gethwid)",
   description:
     "Read the host machine's hardware identifier (HWID) via the executor's gethwid(). This is the stable " +
-    "per-machine fingerprint executors commonly use for key-system/license binding. Requires a Volt-class " +
-    "executor exposing gethwid. The call is type-guarded and pcall-wrapped: if gethwid is missing you get " +
+    "per-machine fingerprint executors commonly use for key-system/license binding. Requires gethwid. " +
+    "The call is type-guarded and pcall-wrapped: if gethwid is missing you get " +
     "{ error = 'gethwid is not available in this executor.' }. Returns { hwid } or { error }.",
   category: "Utility",
   input: z.object({

@@ -10,7 +10,7 @@ export default defineTool({
     "scripts inside them execute outside the normal serial scheduler and are a common place to hide logic. For each " +
     "Actor this returns its name, full path, where it lives (in tree / nil-parented / detached / CoreGui), how many " +
     "LuaSourceContainer descendants it has, and — when includeScripts is true — a capped list (30 per Actor) of those " +
-    "scripts with their name, class, and full path. Requires getactors (Volt-class executors); degrades with a clear " +
+    "scripts with their name, class, and full path. Requires getactors; degrades with a clear " +
     "error otherwise. Output is capped at 200 actors with a truncated flag.",
   category: "Actors & Hidden",
   input: z.object({

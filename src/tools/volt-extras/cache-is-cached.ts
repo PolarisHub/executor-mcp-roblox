@@ -4,13 +4,13 @@ import { q } from "../_shared/luau.js";
 
 export default defineTool({
   name: "cache-is-cached",
-  title: "cache.iscached — check whether an instance is in the executor cache (Volt)",
+  title: "cache.iscached — check whether an instance is in the executor cache",
   description:
     "Report whether the executor currently holds a cached reference for a single Instance via cache.iscached(inst). " +
     "Pairs with cache-invalidate / cache-replace: use it to confirm an instance is cached before invalidating it, or " +
     "to verify that an invalidate actually dropped the cached reference. The target is resolved from a Luau path/" +
     "expression via loadstring('return ' .. expr). Read-only. " +
-    "Requires a Volt-class executor exposing the cache library (type(cache)=='table') with cache.iscached — both are " +
+    "Requires the cache library (type(cache)=='table') with cache.iscached — both are " +
     "type-guarded and the call is pcall-wrapped, returning { error } when missing or on failure. Returns { cached } " +
     "or { error }.",
   category: "Memory Scan",

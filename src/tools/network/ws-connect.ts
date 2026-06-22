@@ -12,13 +12,13 @@ import { q } from "../_shared/luau.js";
  */
 export default defineTool({
   name: "ws-connect",
-  title: "WebSocket.connect — open a live WebSocket (Volt/sUNC)",
+  title: "WebSocket.connect — open a live WebSocket",
   description:
     "WRITES LIVE GAME STATE — opens a real outbound WebSocket from the client via WebSocket.connect(url). The live " +
     "socket is parked in a getgenv registry keyed by an integer id (returned as `id`); use that id with ws-send, " +
     "ws-receive, ws-close, and ws-list. On connect, ws.OnMessage is wired into a capped (200-frame) ring buffer and " +
     "ws.OnClose flips the entry's open flag to false, so inbound frames accumulate server-side until you fetch them. " +
-    "Requires a Volt-class executor exposing the WebSocket library (type(WebSocket)=='table' with WebSocket.connect) " +
+    "Requires the WebSocket library (type(WebSocket)=='table' with WebSocket.connect) " +
     "— both are type-guarded and the connect is pcall-wrapped, returning { error } when missing or on failure. " +
     "Returns { id, url } or { error }.",
   category: "Network",

@@ -3,14 +3,14 @@ import { defineTool } from "../../application/tool/define-tool.js";
 
 export default defineTool({
   name: "get-hidden-ui",
-  title: "gethui — inspect the executor's hidden protected UI container (Volt)",
+  title: "gethui — inspect the executor's hidden protected UI container",
   description:
     "Return a shallow tree of the executor's hidden, protected GUI container via gethui(). This is the parent that " +
     "executors hand back for ScreenGuis they want kept away from CoreGui/PlayerGui and shielded from the game's " +
     "anti-cheat — the usual home of cheat menus, ESP layers, and overlays. The tool walks gethui():GetChildren() and " +
     "returns a { name, class, children } tree capped at depth 3 with a per-node child cap, reporting how many " +
     "children were truncated. " +
-    "Requires gethui (Volt-class executors) — type-guarded and pcall-wrapped, returning { error } when missing or on " +
+    "Requires gethui — type-guarded and pcall-wrapped, returning { error } when missing or on " +
     "failure. Returns { root: { name, class, childCount, children } } or { error }.",
   category: "Inspection",
   input: z.object({

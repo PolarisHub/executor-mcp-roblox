@@ -11,7 +11,7 @@ export default defineTool({
     "inside an Actor (parallel-Luau VM), living in CoreGui, or destroyed-but-still-executing. Each result gives the " +
     "script's name, class, where it actually lives, and whether it is currently running. This is the go-to tool for " +
     "finding malicious/obfuscated/anti-detection scripts that hide outside the normal hierarchy. Requires " +
-    "getscripts/getrunningscripts (Volt-class executors); degrades with a clear error otherwise.",
+    "getscripts/getrunningscripts; degrades with a clear error otherwise.",
   category: "Actors & Hidden",
   input: z.object({
     maxScan: z

@@ -9,7 +9,7 @@ export default defineTool({
   title: "Set the render FPS cap (sUNC setfpscap)",
   description:
     "WRITES CLIENT STATE — sets the executor's render frame-rate cap via setfpscap(cap). Pass 0 to uncap the " +
-    "frame rate. Requires a Volt-class executor exposing setfpscap. The call is type-guarded and pcall-wrapped: if " +
+    "frame rate. Requires setfpscap. The call is type-guarded and pcall-wrapped: if " +
     "setfpscap is missing you get { error = 'setfpscap is not available in this executor.' }. Returns { cap, ok } " +
     "or { error }.",
   category: "Utility",

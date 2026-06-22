@@ -9,7 +9,7 @@ export default defineTool({
     "Probe a path in the executor's workspace and report whether it is an existing file and/or an existing folder. " +
     "NOTE: this is executor-side file I/O — the connector runs INSIDE the executor, so the path is relative to the " +
     "executor's workspace directory on the host machine, NOT the Roblox game. " +
-    "Requires a Volt-class executor exposing the UNC functions isfile(path) -> bool and isfolder(path) -> bool. Each " +
+    "Requires the UNC functions isfile(path) -> bool and isfolder(path) -> bool. Each " +
     "is type-guarded and pcall-wrapped INDEPENDENTLY: if a probe's function is missing or errors, its result is " +
     "reported as false. If NEITHER isfile nor isfolder is available you get " +
     "{ error = 'isfile/isfolder are not available in this executor.' }. " +

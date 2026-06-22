@@ -13,8 +13,8 @@ export default defineTool({
     "An optional className filter narrows the walk to a single ClassName (matched via IsA so subclasses are included). " +
     "Unlike find-hidden-instances (which uses an ancestor-walk to test reachability), this tool uses IsDescendantOf " +
     "against game directly, supports a class filter, and always reports a full byClass breakdown across ALL detached " +
-    "instances. Returns { totalDetached, byClass, truncated, samples: [{ class, name }] }. Requires getinstances " +
-    "(Volt-class executors); degrades with a clear error otherwise.",
+    "instances. Returns { totalDetached, byClass, truncated, samples: [{ class, name }] }. Requires getinstances; " +
+    "degrades with a clear error otherwise.",
   category: "Actors & Hidden",
   input: z.object({
     className: z

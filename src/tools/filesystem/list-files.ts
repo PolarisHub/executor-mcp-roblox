@@ -10,7 +10,7 @@ export default defineTool({
     "NOTE: this is executor-side file I/O — the connector runs INSIDE the executor, so the path is relative to the " +
     "executor's workspace directory on the host machine, NOT the Roblox game. Pass an empty string to list the " +
     "workspace root. " +
-    "Requires a Volt-class executor exposing the UNC function listfiles(path) -> { string }. The call is " +
+    "Requires the UNC function listfiles(path) -> { string }. The call is " +
     "type-guarded and pcall-wrapped: if listfiles is missing you get " +
     "{ error = 'listfiles is not available in this executor.' }, and any failure (missing folder) returns " +
     "{ error = <message> }. The returned list is capped at 1000 entries with a 'truncated' flag. " +

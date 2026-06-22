@@ -2,20 +2,20 @@ import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
 
 /**
- * Capture outgoing RakNet packets via raknet.add_send_hook. Volt's RakNet library
+ * Capture outgoing RakNet packets via raknet.add_send_hook. The RakNet library
  * only exposes a SEND hook (outgoing traffic), so this logs what the client emits:
  * size, priority, reliability, ordering channel, and a hex preview of the payload.
  * Stateful start/fetch/stop, keyed in getgenv so it survives across tool calls.
  */
 export default defineTool({
   name: "packet-spy",
-  title: "Spy on outgoing RakNet packets (Volt)",
+  title: "Spy on outgoing RakNet packets",
   description:
     "WRITES LIVE GAME STATE — installs a RakNet send hook. Captures every OUTGOING low-level packet the client " +
     "sends (RakNet only exposes outgoing traffic). For each packet it records Size, Priority, Reliability, " +
     "OrderingChannel, and a hex preview of the payload. action='start' installs the hook (idempotent), " +
     "'fetch' returns the captured packets newest-first without stopping, 'stop' removes the hook and clears the " +
-    "buffer. Requires a Volt-class executor with the `raknet` library. WARNING: packet-level interception is " +
+    "buffer. Requires the `raknet` library. WARNING: packet-level interception is " +
     "risky and can disconnect or flag the client — stop when done.",
   category: "Network",
   mutatesState: true,
@@ -46,7 +46,7 @@ export default defineTool({
 if type(getgenv) ~= "function" then return { error = "getgenv is not available; cannot maintain the packet spy." } end
 local __g = getgenv()
 if type(raknet) ~= "table" or type(raknet.add_send_hook) ~= "function" then
-  return { error = "raknet.add_send_hook is not available in this executor (requires Volt)." }
+  return { error = "raknet.add_send_hook is not available in this executor." }
 end
 
 local ACTION = "${action}"

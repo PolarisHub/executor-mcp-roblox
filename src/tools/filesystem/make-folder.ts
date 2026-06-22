@@ -9,7 +9,7 @@ export default defineTool({
     "Create a folder (and any required parent folders) inside the executor's workspace. NOTE: this is executor-side " +
     "file I/O — the connector runs INSIDE the executor, so the path is relative to the executor's workspace directory " +
     "on the host machine, NOT the Roblox game. " +
-    "Requires a Volt-class executor exposing the UNC function makefolder(path). The call is type-guarded and " +
+    "Requires the UNC function makefolder(path). The call is type-guarded and " +
     "pcall-wrapped: if makefolder is missing you get { error = 'makefolder is not available in this executor.' }, and " +
     "any failure returns { error = <message> }. Creating a folder that already exists is a no-op on most executors. " +
     "Returns { path, ok = true } or { error }.",

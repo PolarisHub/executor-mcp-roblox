@@ -8,7 +8,7 @@ import cryptDecrypt from "./crypt-decrypt.js";
 import cryptGenerateKey from "./crypt-generate-key.js";
 import cryptGenerateBytes from "./crypt-generate-bytes.js";
 
-/** Every tool in the Crypt category (executor `crypt` library, Volt-class). */
+/** Every tool in the Crypt category (executor `crypt` library). */
 export const cryptTools: Tool[] = [
   cryptBase64Encode,
   cryptBase64Decode,

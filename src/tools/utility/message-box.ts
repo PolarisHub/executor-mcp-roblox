@@ -13,8 +13,8 @@ export default defineTool({
   description:
     "WRITES HOST STATE — pops up a NATIVE OS dialog on the host machine via messagebox(text, caption, flags). The " +
     "flags select the dialog's button/icon style (the same bitfield as the Win32 MessageBox), and the call blocks " +
-    "until the user dismisses it, returning the numeric code of the button pressed. Requires a Volt-class executor " +
-    "exposing messagebox. The call is type-guarded and pcall-wrapped: if messagebox is missing you get " +
+    "until the user dismisses it, returning the numeric code of the button pressed. Requires messagebox. " +
+    "The call is type-guarded and pcall-wrapped: if messagebox is missing you get " +
     "{ error = 'messagebox is not available in this executor.' }. Returns { result } or { error }.",
   category: "Utility",
   mutatesState: true,
@@ -23,8 +23,8 @@ export default defineTool({
     caption: z
       .string()
       .optional()
-      .default("Volt MCP")
-      .describe("The dialog title/caption (default 'Volt MCP')."),
+      .default("MCP")
+      .describe("The dialog title/caption (default 'MCP')."),
     flags: z
       .number()
       .int()
