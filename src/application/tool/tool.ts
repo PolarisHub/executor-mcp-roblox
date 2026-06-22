@@ -19,6 +19,8 @@ export interface HostServices {
 export interface LuauOptions {
   readonly threadContext?: number;
   readonly timeoutMs?: number;
+  /** "vm" runs in the persistent VM environment (globals persist across runs). */
+  readonly env?: "fresh" | "vm" | "vm-reset";
 }
 
 /** Lets the `script` tool expose the whole tool surface to in-game Luau as `mcp.*`. */

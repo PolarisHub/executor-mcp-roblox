@@ -1,7 +1,9 @@
 import type { ActivityLog } from "../../application/ports/activity-log.js";
+import type { ClientAdmin } from "../../application/ports/client-admin.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { AppConfig } from "../../application/ports/config.js";
 import type { ExecutionGateway } from "../../application/ports/execution-gateway.js";
+import type { OutputLog } from "../../application/ports/output-log.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
 import type { HealthReporter } from "../observability/health.js";
 
@@ -12,6 +14,8 @@ export interface DashboardDeps {
   readonly activity: ActivityLog;
   readonly health: HealthReporter;
   readonly gateway: ExecutionGateway;
+  readonly output: OutputLog;
+  readonly admin: ClientAdmin;
 }
 
 /** The JSON the dashboard polls. Kept flat and presentational. */

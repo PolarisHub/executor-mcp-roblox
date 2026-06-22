@@ -20,13 +20,27 @@ import type {
   ServerMessage,
 } from "../../domain/protocol/messages.js";
 import { ClientId, RequestId, UserId } from "../../domain/shared/ids.js";
+import type { ClientAdmin } from "../../application/ports/client-admin.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { Clock } from "../../application/ports/clock.js";
 import type { AppConfig } from "../../application/ports/config.js";
 import type { EvalRequest, ExecutionGateway } from "../../application/ports/execution-gateway.js";
 import type { Logger } from "../../application/ports/logger.js";
 import type { Metrics } from "../../application/ports/metrics.js";
+import type { OutputKind, OutputLog } from "../../application/ports/output-log.js";
 import { decodeClientMessage, encodeServerMessage } from "./protocol-codec.js";
+
+const OUTPUT_KINDS: ReadonlySet<string> = new Set([
+  "print",
+  "info",
+  "warn",
+  "error",
+  "system",
+]);
+
+function asOutputKind(value: unknown): OutputKind {
+  return typeof value === "string" && OUTPUT_KINDS.has(value) ? (value as OutputKind) : "print";
+}
 
 /** Normalize a ws frame to UTF-8 text. ws may deliver a Buffer, ArrayBuffer, or Buffer[]. */
 function rawDataToString(data: RawData): string {
@@ -66,6 +80,8 @@ interface BridgeDeps {
   readonly logger: Logger;
   readonly clock: Clock;
   readonly metrics: Metrics;
+  /** Optional sink for game output streamed over the `event` channel. */
+  readonly output?: OutputLog;
 }
 
 /**
@@ -78,13 +94,14 @@ interface BridgeDeps {
  * `stop()`. The composition root may also mount more routes on {@link http}
  * before `start()`.
  */
-export class BridgeServer implements ExecutionGateway, ClientDirectory {
+export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAdmin {
   readonly http: Hono;
 
   private readonly config: AppConfig;
   private readonly logger: Logger;
   private readonly clock: Clock;
   private readonly metrics: Metrics;
+  private readonly output?: OutputLog;
 
   private readonly connections = new Map<ClientId, Connection>();
   private readonly wss: WebSocketServer;
@@ -97,6 +114,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
     this.logger = deps.logger.child({ component: "bridge" });
     this.clock = deps.clock;
     this.metrics = deps.metrics;
+    this.output = deps.output;
 
     this.http = new Hono();
     this.http.get("/health", (c) => c.json({ status: "ok" }));
@@ -203,6 +221,15 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
     return this.connections.get(clientId)?.client;
   }
 
+  // ── ClientAdmin ──────────────────────────────────────────────────────────────
+
+  disconnect(clientId: ClientId, reason = "disconnected from dashboard"): boolean {
+    const connection = this.connections.get(clientId);
+    if (!connection) return false;
+    this.dropConnection(connection, reason);
+    return true;
+  }
+
   // ── ExecutionGateway ─────────────────────────────────────────────────────────
 
   eval(clientId: ClientId, request: EvalRequest, signal?: AbortSignal): Promise<unknown> {
@@ -265,7 +292,13 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
         this.send(connection, {
           type: "op",
           id: requestId,
-          op: { kind: "eval", source: request.source, threadContext, timeoutMs },
+          op: {
+            kind: "eval",
+            source: request.source,
+            threadContext,
+            timeoutMs,
+            ...(request.env ? { env: request.env } : {}),
+          },
         });
       } catch (error) {
         settle(() => reject(toDomainError(error)));
@@ -428,7 +461,14 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
         return;
       }
       case "event": {
-        this.logger.debug({ clientId: connection.id, channel: message.channel }, "connector event");
+        if (message.channel === "output") {
+          this.recordOutput(connection, message.data);
+        } else {
+          this.logger.debug(
+            { clientId: connection.id, channel: message.channel },
+            "connector event",
+          );
+        }
         return;
       }
       case "hello": {
@@ -442,6 +482,27 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory {
         void exhaustive;
         return;
       }
+    }
+  }
+
+  /** Record a batch of game-output lines streamed on the `output` event channel. */
+  private recordOutput(connection: Connection, data: unknown): void {
+    const sink = this.output;
+    if (!sink || typeof data !== "object" || data === null) return;
+    const entries = (data as { entries?: unknown }).entries;
+    if (!Array.isArray(entries)) return;
+    const now = this.clock.now();
+    for (const raw of entries) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const e = raw as { kind?: unknown; message?: unknown; at?: unknown };
+      const message = typeof e.message === "string" ? e.message : "";
+      sink.record({
+        clientId: connection.id,
+        clientName: connection.client.username,
+        kind: asOutputKind(e.kind),
+        message,
+        at: typeof e.at === "number" && e.at > 0 ? e.at : now,
+      });
     }
   }
 

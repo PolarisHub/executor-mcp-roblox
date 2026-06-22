@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 
 import { toDomainError } from "../../domain/errors/errors.js";
+import { ClientId } from "../../domain/shared/ids.js";
 import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
 import { ExplorerService } from "./dashboard-explorer.js";
@@ -32,6 +33,20 @@ export class Dashboard {
     app.get("/api/state", (c) => c.json(buildDashboardState(this.deps)));
     app.get("/api/tools", (c) => c.json(buildToolCatalog(this.deps.registry)));
     app.get("/api/class-icons", (c) => c.json(CLASS_ICON_INDEX));
+
+    app.get("/api/output", (c) => {
+      const client = c.req.query("client") || undefined;
+      const limit = Math.min(Number(c.req.query("limit")) || 500, 2000);
+      return c.json({ entries: this.deps.output.recent(limit, client) });
+    });
+
+    app.post("/api/clients/:id/disconnect", (c) => {
+      const id = c.req.param("id");
+      if (!id) return c.json({ ok: false, error: "missing client id" }, 400);
+      const dropped = this.deps.admin.disconnect(ClientId(id), "disconnected from dashboard");
+      if (!dropped) return c.json({ ok: false, error: "client not connected" }, 404);
+      return c.json({ ok: true });
+    });
 
     app.get("/assets/class-icons.png", (c) => {
       if (!this.classIcons) {

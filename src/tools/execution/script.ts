@@ -3,11 +3,16 @@ import { defineTool } from "../../application/tool/define-tool.js";
 import { q } from "../_shared/luau.js";
 
 /**
- * Builds the Luau that runs the caller's script with a live `mcp` table bound to
- * the whole tool surface. `mcp.<camelCaseTool>(args)` (or `mcp.call("kebab-name",
- * args)`) makes a loopback HTTP call to the token-gated bridge, which runs that
- * real tool on this same client and returns its data — usable inline. The script
- * runs in-game, so `game`, `workspace`, etc. are all available too.
+ * Builds the Luau that runs the caller's script with:
+ *  - a live `mcp` table bound to the whole tool surface (mcp.<camelCaseTool>(args)
+ *    or mcp.call("kebab-name", args)) via the token-gated loopback bridge,
+ *  - captured `print`/`warn` for this run (returned as `output`), still echoed to
+ *    the real console (and thus the dashboard Output feed),
+ *  - the persistent VM environment when requested, so user globals survive runs.
+ *
+ * The user's code runs in a per-run env layered over the base env (the persistent
+ * VM env, or fresh globals): reads see `mcp`/`game`/persistent globals; writes
+ * land in the base env (persisting in VM mode) without polluting the real globals.
  */
 function buildScript(baseUrl: string, token: string, source: string): string {
   return `
@@ -55,7 +60,7 @@ local function __call(name, args)
   return decoded.data
 end
 
-mcp = setmetatable({
+local mcp = setmetatable({
   call = function(name, args) return __call(name, args) end,
 }, {
   __index = function(_, key)
@@ -64,29 +69,49 @@ mcp = setmetatable({
   end,
 })
 
+-- Base env: the persistent VM env when the connector sandboxed us, else globals.
+local baseEnv = (getfenv and getfenv(1)) or _G
+local __out = {}
+local __realprint, __realwarn = print, warn
+local function __cap(real)
+  return function(...)
+    local n = select("#", ...)
+    local parts = table.create and table.create(n) or {}
+    for i = 1, n do parts[i] = tostring((select(i, ...))) end
+    __out[#__out + 1] = table.concat(parts, "\\t")
+    pcall(real, ...)
+  end
+end
+-- Per-run env: capturing print/warn + mcp over the base env; writes persist to base.
+local runEnv = setmetatable(
+  { print = __cap(__realprint), warn = __cap(__realwarn), mcp = mcp },
+  { __index = baseEnv, __newindex = baseEnv }
+)
+
 local __userfn, __cerr = loadstring(${q(source)}, "=script")
-if not __userfn then return { error = "compile error: " .. tostring(__cerr) } end
+if not __userfn then return { error = "compile error: " .. tostring(__cerr), output = __out } end
+if type(setfenv) == "function" then pcall(setfenv, __userfn, runEnv) else baseEnv.mcp = mcp end
 local __ok, __ret = pcall(__userfn)
-if not __ok then return { error = "runtime error: " .. tostring(__ret) } end
-return { result = __ret }
+if not __ok then return { error = "runtime error: " .. tostring(__ret), output = __out } end
+return { result = __ret, output = __out }
 `;
 }
 
 export default defineTool({
   name: "script",
-  title: "Run a Luau Script with the Whole Tool Surface (mcp.*)",
+  title: "Run a Luau Script with the Whole Tool Surface (mcp.*) + Persistent VM",
   description:
     "Run a Luau program in the active Roblox client that can ALSO call any other tool inline through a live `mcp` " +
     "table, and use the results in the same script — one call instead of dozens of round-trips. Inside the script: " +
     "`game`, `workspace`, and all in-game globals are available (like `execute`/`run-luau`), PLUS `mcp.<tool>(args)` " +
     "invokes any of this server's tools and RETURNS its data. Tool names are camelCase of the tool id (e.g. " +
     "`mcp.getPlayers()`, `mcp.searchInstances({ className = 'RemoteEvent' })`, `mcp.findFunctionsByName({ name = " +
-    "'buy' })`, `mcp.getInstanceProperties({ path = 'game.Workspace' })`), or use `mcp.call('kebab-tool-name', " +
-    "{ ... })`. `args` is a table matching that tool's input; the return value is that tool's normal data. A failing " +
-    "tool raises a Lua error you can pcall. Whatever your script `return`s comes back as `{ result = ... }` (a " +
-    "compile/runtime error comes back as `{ error = ... }`). Use this to orchestrate multi-step workflows: scan, " +
-    "branch on results, transform, and act — leveraging the full toolset, not just a few tools. Requires loadstring " +
-    "and an executor HTTP function (request/http_request); both are guarded. mcp.script is disabled (no recursion).",
+    "'buy' })`), or `mcp.call('kebab-tool-name', { ... })`. `print`/`warn` are captured and returned as `output` " +
+    "(and still stream to the dashboard Output console). By default the script runs in a PERSISTENT VM: globals and " +
+    "functions you define survive across `script` calls (a REPL-like session) — set persistent:false for a clean " +
+    "one-shot run, or call `vm-reset` to wipe the VM. Returns `{ result = <your return value>, output = { ...lines } }` " +
+    "or `{ error, output }`. Requires loadstring + an executor HTTP function (request/http_request); both guarded. " +
+    "mcp.script is disabled (no recursion).",
   category: "Execution",
   mutatesState: true,
   input: z.object({
@@ -94,7 +119,14 @@ export default defineTool({
       .string()
       .describe(
         "The Luau script to run. Has `game`/`workspace`/all in-game globals, plus `mcp.<tool>(args)` to call any " +
-          "tool and use its returned data inline. `return <value>` to hand a value back as { result = value }.",
+          "tool and use its returned data inline. `print`/`warn` are captured. `return <value>` to hand a value back.",
+      ),
+    persistent: z
+      .boolean()
+      .optional()
+      .describe(
+        "Run in the persistent VM so defined globals/functions survive across calls (default true). " +
+          "false = a fresh, isolated environment each run.",
       ),
     timeoutMs: z
       .number()
@@ -104,7 +136,7 @@ export default defineTool({
       .describe("Overall timeout for the whole script including nested tool calls (default 120000)."),
     threadContext: z.number().int().optional(),
   }),
-  async execute({ source, timeoutMs, threadContext }, ctx) {
+  async execute({ source, persistent, timeoutMs, threadContext }, ctx) {
     if (!ctx.scripting) {
       return {
         data: { error: "The scripting bridge is not available on this server." },
@@ -116,6 +148,7 @@ export default defineTool({
     try {
       const data = await ctx.runLuau(wrapped, {
         timeoutMs: timeoutMs ?? 120000,
+        env: persistent === false ? "fresh" : "vm",
         ...(threadContext !== undefined ? { threadContext } : {}),
       });
       return { data };

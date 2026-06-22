@@ -320,11 +320,42 @@ local function applyThreadContext(threadContext)
 	end
 end
 
+--==============================================================================--
+-- Persistent VM environment (hidden: held only in this upvalue, never a global,
+-- so it stays out of getgenv()/global scans)
+--==============================================================================--
+
+-- Base env that VM scripts read through (game, workspace, print, task, ...),
+-- captured from the connector's own environment so the VM sees the same globals.
+local GLOBAL_ENV = (getfenv and getfenv(1)) or _G
+
+-- Writes (user-defined globals) land here and survive across runs; reads fall
+-- through to GLOBAL_ENV. Rebuilt on "vm-reset".
+local vmState = nil
+local function freshVmEnv()
+	local env = {}
+	setmetatable(env, { __index = GLOBAL_ENV })
+	return env
+end
+local function getVmEnv()
+	if vmState == nil then
+		vmState = freshVmEnv()
+	end
+	return vmState
+end
+
 -- Run a single eval op and return an OpResult-shaped table:
 --   { ok = true, value = <encoded first return value> }
 --   { ok = false, error = <message>, kind = "runtime" | "timeout" }
 local function runEval(op)
 	local source = op.source
+
+	-- Wipe the persistent VM environment and return immediately.
+	if op.env == "vm-reset" then
+		vmState = freshVmEnv()
+		return { ok = true, value = { reset = true } }
+	end
+
 	if typeof(source) ~= "string" then
 		return { ok = false, error = "eval op missing string 'source'.", kind = "runtime" }
 	end
@@ -336,6 +367,15 @@ local function runEval(op)
 	local fn, compileErr = loadstring(source)
 	if not fn then
 		return { ok = false, error = "compile error: " .. tostring(compileErr), kind = "runtime" }
+	end
+
+	-- Persistent VM: run inside the reusable sandbox so globals survive across runs.
+	if op.env == "vm" then
+		pcall(function()
+			if isCallable(setfenv) then
+				setfenv(fn, getVmEnv())
+			end
+		end)
 	end
 
 	local timeoutMs = op.timeoutMs
@@ -549,10 +589,45 @@ local function runConnection()
 	-- Send the handshake immediately after wiring handlers.
 	send({ type = "hello", protocolVersion = PROTOCOL_VERSION, client = buildHandshake(clientId) })
 
-	-- Block until the socket closes.
+	-- Output streaming: tap LogService.MessageOut (captures every print/warn/error
+	-- in the game, including from VM scripts) and flush batched lines to the server.
+	-- Best-effort and fully guarded; a failure here never affects the connection.
+	local outBuf = {}
+	local outConn = nil
+	pcall(function()
+		local LogService = safeService("LogService")
+		if LogService == nil then
+			return
+		end
+		local kindOf = {}
+		pcall(function()
+			kindOf[Enum.MessageType.MessageOutput] = "print"
+			kindOf[Enum.MessageType.MessageInfo] = "info"
+			kindOf[Enum.MessageType.MessageWarning] = "warn"
+			kindOf[Enum.MessageType.MessageError] = "error"
+		end)
+		outConn = LogService.MessageOut:Connect(function(message, messageType)
+			if #outBuf < 500 then
+				outBuf[#outBuf + 1] = { kind = kindOf[messageType] or "print", message = tostring(message) }
+			end
+		end)
+	end)
+
+	-- Block until the socket closes, flushing buffered output ~10x/second.
 	while connected do
 		task.wait(0.1)
+		if #outBuf > 0 then
+			local batch = outBuf
+			outBuf = {}
+			send({ type = "event", channel = "output", data = { entries = batch } })
+		end
 	end
+
+	pcall(function()
+		if outConn then
+			outConn:Disconnect()
+		end
+	end)
 
 	pcall(function()
 		socket:Close()

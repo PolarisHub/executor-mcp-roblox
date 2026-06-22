@@ -42,6 +42,7 @@ const clientOpSchema = z.object({
   source: z.string(),
   threadContext: z.number(),
   timeoutMs: z.number(),
+  env: z.enum(["fresh", "vm", "vm-reset"]).optional(),
 }) satisfies z.ZodType<ClientOp>;
 
 const serverMessageSchema = z.union([

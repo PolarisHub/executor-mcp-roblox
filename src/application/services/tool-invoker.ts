@@ -103,6 +103,7 @@ export class ToolInvoker {
             source,
             threadContext: options?.threadContext ?? config.execution.defaultThreadContext,
             timeoutMs: options?.timeoutMs ?? config.execution.defaultTimeoutMs,
+            ...(options?.env ? { env: options.env } : {}),
           },
           controller.signal,
         );

@@ -215,6 +215,33 @@ export function renderDashboardPage(): string {
   tr.clickable .go svg { width: 13px; height: 13px; }
   td.go-cell { text-align: right; width: 1%; }
 
+  /* ---- disconnect button ---- */
+  td.kill-cell { width: 36px; padding-right: 14px; padding-left: 4px; text-align: right; }
+  .kill {
+    appearance: none; cursor: pointer; padding: 6px; border-radius: 6px;
+    background: transparent; border: 1px solid transparent; color: var(--faint);
+    display: inline-flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .12s ease, color .12s ease,
+      background-color .12s ease, border-color .12s ease;
+  }
+  tr.clickable:hover .kill { opacity: 0.85; }
+  .kill:hover {
+    opacity: 1; color: var(--err);
+    background: rgba(226, 92, 84, 0.10); border-color: rgba(226, 92, 84, 0.32);
+  }
+  .kill:focus-visible {
+    outline: none; opacity: 1;
+    border-color: rgba(226, 92, 84, 0.5); color: var(--err);
+  }
+  .kill svg { width: 14px; height: 14px; }
+  .kill.confirm {
+    opacity: 1; color: #fff; padding: 4px 9px 4px 7px; gap: 5px;
+    background: var(--err); border-color: var(--err);
+    font: inherit; font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em;
+  }
+  .kill.confirm:hover { background: #d04a42; border-color: #d04a42; }
+  .kill.busy { opacity: 0.5; cursor: default; pointer-events: none; }
+
   /* ---- explorer ---- */
   .exp-toolbar {
     display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
@@ -347,6 +374,36 @@ export function renderDashboardPage(): string {
   .loading { color: var(--dim); display: inline-flex; align-items: center; gap: 8px; padding: 12px; }
   .err-msg { color: var(--err); opacity: .85; padding: 12px; font-size: 12px; }
 
+  /* ---- output console ---- */
+  .out-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .out-filter { flex: 1; margin-bottom: 0; }
+  .out-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); white-space: nowrap; cursor: pointer; }
+  .out-toggle input { accent-color: var(--accent); }
+  .out-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .out-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-left: 8px; }
+  .out-legend i.ok { background: var(--text); } .out-legend i.info { background: var(--accent); }
+  .out-legend i.warn { background: var(--warn); } .out-legend i.err { background: var(--err); }
+  .out-btn {
+    appearance: none; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim);
+    font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+  }
+  .out-btn:hover { background: var(--hover); color: var(--text); border-color: var(--border-2); }
+  .console {
+    height: calc(100vh - 230px); min-height: 280px; overflow-y: auto;
+    background: #101012; border: 1px solid var(--border); border-radius: 8px; padding: 8px 0;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  }
+  .oline { display: flex; gap: 10px; padding: 1px 14px; white-space: pre-wrap; word-break: break-word; }
+  .oline:hover { background: rgba(255,255,255,.02); }
+  .oline .ot { color: var(--faint); flex: none; font-variant-numeric: tabular-nums; }
+  .oline .oc { flex: none; width: 4px; border-radius: 2px; background: #333; }
+  .oline .om { color: #cfd2d6; min-width: 0; }
+  .oline.k-warn .om { color: var(--warn); } .oline.k-warn .oc { background: var(--warn); }
+  .oline.k-error .om { color: #ff8a82; } .oline.k-error .oc { background: var(--err); }
+  .oline.k-info .om { color: var(--accent); } .oline.k-info .oc { background: var(--accent); }
+  .oline.k-system .om { color: var(--accent-2, #57e6c9); } .oline.k-system .oc { background: var(--ok); }
+  .oline .oclient { color: var(--faint); flex: none; }
+
   @media (max-width: 720px) {
     .tools-layout { grid-template-columns: 1fr; }
     .exp-layout { grid-template-columns: 1fr; }
@@ -386,6 +443,7 @@ export function renderDashboardPage(): string {
   <button data-tab="tools">Tools<span class="count" id="t-tools">0</span></button>
   <button data-tab="activity">Activity<span class="count" id="t-activity">0</span></button>
   <button data-tab="explorer">Explorer</button>
+  <button data-tab="output">Output<span class="count" id="t-output">0</span></button>
 </nav>
 
 <main>
@@ -405,6 +463,19 @@ export function renderDashboardPage(): string {
   <section class="panel" id="panel-activity"></section>
 
   <section class="panel" id="panel-explorer"></section>
+
+  <section class="panel" id="panel-output">
+    <div class="out-bar">
+      <input class="search out-filter" id="out-filter" type="text" placeholder="Filter output…" autocomplete="off" />
+      <label class="out-toggle"><input type="checkbox" id="out-autoscroll" checked /> Auto-scroll</label>
+      <span class="out-legend">
+        <i class="ok"></i>print <i class="info"></i>info <i class="warn"></i>warn <i class="err"></i>error
+      </span>
+      <span class="count" id="out-count"></span>
+      <button class="out-btn" id="out-clear">Clear</button>
+    </div>
+    <div class="console" id="console"></div>
+  </section>
 </main>
 
 <script>
@@ -451,6 +522,7 @@ export function renderDashboardPage(): string {
   };
 
   var state = null, tools = [], pollFails = 0, iconMap = {};
+  var outData = [], outFilter = "", outAutoscroll = true, outClearedAt = 0;
   var activeTab = "clients", activeCat = "__all", query = "";
 
   // ---- explorer state ----
@@ -480,6 +552,7 @@ export function renderDashboardPage(): string {
     var panels = document.querySelectorAll(".panel");
     for (var j = 0; j < panels.length; j++) panels[j].classList.toggle("active", panels[j].id === "panel-" + tab);
     if (tab === "explorer") renderExplorer();
+    if (tab === "output") renderOutput();
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -532,6 +605,11 @@ export function renderDashboardPage(): string {
         : '<span class="avatar">' + initial + "</span>";
       var go = '<span class="go">Explore' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>';
+      var kill = '<button class="kill" title="Disconnect this session" aria-label="Disconnect">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
+        '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>' +
+        '<path d="M10 11v6"/><path d="M14 11v6"/></svg></button>';
       return '<tr class="clickable" data-client="' + esc(c.clientId) + '" data-name="' + esc(name) +
         '">' + "<td><div class=\\"who\\">" + av + "<div><div class=\\"nm\\">" + esc(name) +
         '</div><div class="id">' + esc(c.username || "") + (c.userId ? " · " + c.userId : "") + "</div></div></div></td>" +
@@ -539,15 +617,65 @@ export function renderDashboardPage(): string {
         '<td class="mono num muted">' + (c.placeId || "—") + "</td>" +
         '<td class="num muted">' + c.capabilities + "</td>" +
         '<td class="faint" data-at="' + c.connectedAt + '">' + relTime(c.connectedAt) + "</td>" +
-        '<td class="go-cell">' + go + "</td></tr>";
+        '<td class="go-cell">' + go + "</td>" +
+        '<td class="kill-cell">' + kill + "</td></tr>";
     });
     el.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Executor</th>' +
-      "<th>Place</th><th>Caps</th><th>Connected</th><th></th></tr></thead><tbody>" + rows.join("") + "</tbody></table></div>";
+      "<th>Place</th><th>Caps</th><th>Connected</th><th></th><th></th></tr></thead><tbody>" +
+      rows.join("") + "</tbody></table></div>";
     el.querySelector("tbody").onclick = function (e) {
+      var btn = e.target.closest(".kill");
+      if (btn) {
+        e.stopPropagation();
+        handleKillClick(btn);
+        return;
+      }
       var tr = e.target.closest("tr.clickable");
       if (!tr) return;
       selectExploreClient(tr.getAttribute("data-client"), tr.getAttribute("data-name"));
     };
+  }
+
+  // Two-step destructive confirm on the inline trash button. First click expands
+  // to "Disconnect?"; second click within 3s fires; clicking anywhere else cancels.
+  var killArmed = null, killTimer = null;
+  function disarmKill() {
+    if (!killArmed) return;
+    var b = killArmed;
+    killArmed = null;
+    if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+    if (b.isConnected) {
+      b.classList.remove("confirm");
+      b.innerHTML = b.getAttribute("data-icon") || "";
+    }
+  }
+  document.addEventListener("click", function () { disarmKill(); });
+  function handleKillClick(btn) {
+    if (btn.classList.contains("busy")) return;
+    if (killArmed === btn) {
+      killArmed = null;
+      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+      var tr = btn.closest("tr.clickable");
+      var id = tr && tr.getAttribute("data-client");
+      if (!id) return;
+      btn.classList.add("busy");
+      btn.textContent = "Disconnecting…";
+      fetch("/api/clients/" + encodeURIComponent(id) + "/disconnect", { method: "POST" })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function () { pollState(); pollOutput(); })
+        .catch(function () {
+          btn.classList.remove("busy");
+          btn.classList.remove("confirm");
+          btn.innerHTML = btn.getAttribute("data-icon") || "";
+        });
+      return;
+    }
+    disarmKill();
+    btn.setAttribute("data-icon", btn.innerHTML);
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>Disconnect';
+    btn.classList.add("confirm");
+    killArmed = btn;
+    killTimer = setTimeout(disarmKill, 3000);
   }
 
   // ---- activity ----
@@ -1009,11 +1137,64 @@ export function renderDashboardPage(): string {
     }).catch(function () {});
   }
 
+  // ---- output console ----
+  function fmtClock(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  function renderOutput() {
+    var el = byId("console");
+    if (!el) return;
+    var q = outFilter.toLowerCase();
+    var rows = [];
+    for (var i = 0; i < outData.length; i++) {
+      var e = outData[i];
+      if (e.at <= outClearedAt) continue;
+      if (q && String(e.message).toLowerCase().indexOf(q) === -1) continue;
+      var kind = e.kind || "print";
+      var who = e.clientName ? '<span class="oclient">' + esc(e.clientName) + "</span>" : "";
+      rows.push('<div class="oline k-' + esc(kind) + '"><span class="ot">' + fmtClock(e.at) +
+        '</span><span class="oc"></span>' + who + '<span class="om">' + esc(e.message) + "</span></div>");
+    }
+    byId("out-count").textContent = rows.length + " lines";
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty"><div class="h">No output yet</div>' +
+        '<div class="s">Every print, warn and error from the game streams here live.</div></div>';
+      return;
+    }
+    el.innerHTML = rows.join("");
+    if (outAutoscroll) el.scrollTop = el.scrollHeight;
+  }
+  function pollOutput() {
+    fetch("/api/output?limit=1200").then(function (r) { return r.json(); }).then(function (data) {
+      var entries = (data && data.entries) || [];
+      entries.reverse(); // API is newest-first; console reads top-down chronologically
+      outData = entries;
+      var visible = 0;
+      for (var i = 0; i < outData.length; i++) { if (outData[i].at > outClearedAt) visible++; }
+      byId("t-output").textContent = visible;
+      if (activeTab === "output") renderOutput();
+    }).catch(function () {});
+  }
+  byId("out-filter").addEventListener("input", function (e) { outFilter = e.target.value; renderOutput(); });
+  byId("out-autoscroll").addEventListener("change", function (e) {
+    outAutoscroll = e.target.checked;
+    if (outAutoscroll) renderOutput();
+  });
+  byId("out-clear").addEventListener("click", function () {
+    outClearedAt = outData.length ? outData[outData.length - 1].at : Date.now();
+    renderOutput();
+    byId("t-output").textContent = 0;
+  });
+
   loadIcons();
   loadTools();
   pollState();
+  pollOutput();
   setInterval(pollState, 2000);
   setInterval(loadTools, 30000);
+  setInterval(pollOutput, 1500);
 })();
 </script>
 </body>

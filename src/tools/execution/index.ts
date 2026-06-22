@@ -12,6 +12,7 @@ import runDeferred from "./run-deferred.js";
 import runWithTimeout from "./run-with-timeout.js";
 import executeFile from "./execute-file.js";
 import script from "./script.js";
+import vmReset from "./vm-reset.js";
 
 /** Every tool in the Execution category. */
 export const executionTools: Tool[] = [
@@ -27,4 +28,5 @@ export const executionTools: Tool[] = [
   runWithTimeout,
   executeFile,
   script,
+  vmReset,
 ];

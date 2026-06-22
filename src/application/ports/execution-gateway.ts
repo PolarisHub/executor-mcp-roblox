@@ -7,6 +7,8 @@ export interface EvalRequest {
   readonly threadContext?: number;
   /** Per-call deadline override (defaults applied by the gateway from config). */
   readonly timeoutMs?: number;
+  /** "vm" runs in the persistent VM env; "vm-reset" wipes it; omitted = fresh. */
+  readonly env?: "fresh" | "vm" | "vm-reset";
 }
 
 /**

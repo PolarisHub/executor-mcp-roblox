@@ -20,6 +20,7 @@ import { Dashboard } from "../infrastructure/dashboard/dashboard.js";
 import { McpAdapter } from "../infrastructure/mcp/mcp-adapter.js";
 import { HealthReporter } from "../infrastructure/observability/health.js";
 import { InMemoryActivityLog } from "../infrastructure/observability/in-memory-activity-log.js";
+import { InMemoryOutputLog } from "../infrastructure/observability/in-memory-output-log.js";
 import { createLogger } from "../infrastructure/observability/pino-logger.js";
 import { createMetrics } from "../infrastructure/observability/metrics.js";
 import { systemClock } from "../infrastructure/observability/system-clock.js";
@@ -44,9 +45,12 @@ function compose(): Application {
   const metrics = createMetrics();
 
   const sessionStore = new InMemorySessionStore();
+  // Live feed of every client's in-game output (print/warn/error), streamed by
+  // the connector over the bridge `event` channel.
+  const output = new InMemoryOutputLog();
   // BridgeServer is both the ExecutionGateway and the ClientDirectory, so the
   // same instance is injected wherever either port is required.
-  const bridge = new BridgeServer({ config, logger, clock, metrics });
+  const bridge = new BridgeServer({ config, logger, clock, metrics, output });
   const health = new HealthReporter({ clock, clients: bridge, version: APP_VERSION });
 
   // Serve the in-game connector so the loader can fetch it over HTTP. Resolved
@@ -99,6 +103,8 @@ function compose(): Application {
       activity,
       health,
       gateway: bridge,
+      output,
+      admin: bridge,
     });
     bridge.addRoutes((app) => dashboard.mount(app));
   } else {

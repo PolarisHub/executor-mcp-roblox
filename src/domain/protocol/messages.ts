@@ -33,6 +33,13 @@ export interface ClientOp {
   readonly threadContext: number;
   /** Hard deadline; the connector aborts and reports a timeout past this. */
   readonly timeoutMs: number;
+  /**
+   * Where to run. Omitted/"fresh" = a one-shot chunk in a clean environment.
+   * "vm" = the persistent, hidden VM environment whose globals survive across
+   * runs (a REPL-like session). "vm-reset" wipes that environment and returns.
+   * The connector falls back to a fresh env if it cannot sandbox.
+   */
+  readonly env?: "fresh" | "vm" | "vm-reset";
 }
 
 /** The outcome of a {@link ClientOp}. */
