@@ -1,12 +1,13 @@
-/**
+﻿/**
  * Real Roblox Studio explorer icons, keyed by ClassName -> sprite index.
  *
- * Generated from Roblox Studio's `ReflectionMetadata.xml` (`ExplorerImageIndex`
- * per class). The matching sprite strip — Studio's `ClassImages.png`, a 16px-tall
- * horizontal row of 147 16x16 icons — ships at `assets/class-icons.png` and is
- * served at `/assets/class-icons.png`. A node's icon is the sub-rect at
- * `x = index * 16`. These are Roblox's own Studio assets, used here to render the
- * explorer the way Studio does.
+ * Built from Roblox Studio's `ReflectionMetadata.xml` (`ExplorerImageIndex` per
+ * class) and the API dump's class hierarchy: each class resolves to the nearest
+ * ancestor that defines an icon. Classes not listed here fall back to icon 0
+ * (Studio's generic default) in the dashboard, so every instance gets a real
+ * Studio icon. The matching sprite strip ships at `assets/class-icons.png` and
+ * is served at `/assets/class-icons.png` (16px-tall row of 16x16 icons; a
+ * class's icon is the sub-rect at `x = index * 16`).
  */
 export const CLASS_ICON_SIZE = 16;
 
@@ -21,6 +22,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   AlignPosition: 99,
   AngularVelocity: 103,
   Animation: 60,
+  AnimationConstraint: 86,
   AnimationController: 60,
   AnimationTrack: 60,
   Animator: 60,
@@ -38,8 +40,8 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   AudioEcho: 11,
   AudioEmitter: 11,
   AudioEqualizer: 11,
-  AudioFDNReverb: 11,
   AudioFader: 11,
+  AudioFDNReverb: 11,
   AudioFilter: 11,
   AudioFlanger: 11,
   AudioGate: 11,
@@ -54,9 +56,11 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   AudioTremolo: 11,
   AuroraScript: 76,
   Backpack: 20,
+  BackpackItem: 2,
   BallSocketConstraint: 86,
   Beam: 96,
   BillboardGui: 64,
+  BinaryStringValue: 4,
   BindableEvent: 67,
   BindableFunction: 66,
   BlockMesh: 8,
@@ -84,6 +88,8 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   ChatWindowConfiguration: 141,
   ChorusSoundEffect: 84,
   ClickDetector: 41,
+  ClientReplicator: 29,
+  CloudLocalizationTable: 97,
   Clouds: 28,
   Color3Value: 4,
   ColorCorrectionEffect: 83,
@@ -108,6 +114,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   DistortionSoundEffect: 84,
   DoubleConstrainedValue: 4,
   DragDetector: 41,
+  DynamicRotate: 34,
   EchoSoundEffect: 84,
   EqualizerSoundEffect: 84,
   Explosion: 36,
@@ -121,6 +128,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   ForceField: 37,
   Frame: 48,
   GeneratedFolder: 77,
+  Glue: 34,
   GuiButton: 52,
   GuiMain: 47,
   Handles: 53,
@@ -151,6 +159,9 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   LocalizationTable: 97,
   LocalScript: 18,
   MakeupDescription: 104,
+  ManualGlue: 34,
+  ManualSurfaceJointInstance: 34,
+  ManualWeld: 34,
   MarketplaceService: 46,
   MaterialService: 131,
   MaterialVariant: 130,
@@ -158,6 +169,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   Message: 33,
   Model: 2,
   ModuleScript: 76,
+  Motor: 34,
   Motor6D: 106,
   NegateOperation: 72,
   NetworkClient: 16,
@@ -193,8 +205,8 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   Preloaded: 70,
   PrismaticConstraint: 88,
   PrismPart: 1,
+  ProceduralModel: 2,
   ProximityPrompt: 124,
-  PyramidHandleAdornment: 0,
   PyramidPart: 1,
   RayValue: 4,
   RemoteEvent: 75,
@@ -209,6 +221,9 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   RocketPropulsion: 14,
   RodConstraint: 90,
   RopeConstraint: 89,
+  Rotate: 34,
+  RotateP: 34,
+  RotateV: 34,
   ScreenGui: 47,
   Script: 6,
   ScrollingFrame: 48,
@@ -217,6 +232,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   SelectionPartLasso: 57,
   SelectionPointLasso: 57,
   SelectionSphere: 54,
+  ServerReplicator: 29,
   ServerScriptService: 71,
   ServerStorage: 69,
   Shirt: 43,
@@ -293,6 +309,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   Vector3Value: 4,
   VectorForce: 102,
   VehicleSeat: 35,
+  VelocityMotor: 34,
   VideoDisplay: 11,
   VideoFrame: 120,
   VideoPlayer: 11,
@@ -305,6 +322,7 @@ export const CLASS_ICON_INDEX: Record<string, number> = {
   WireframeHandleAdornment: 113,
   Workspace: 19,
   WorldModel: 19,
+  WorldRoot: 2,
   WrapDeformer: 127,
   WrapLayer: 126,
   WrapTarget: 127,

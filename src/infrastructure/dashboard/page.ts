@@ -634,9 +634,7 @@ export function renderDashboardPage(): string {
   }
   function classSquare(cls) {
     var idx = iconMap[cls];
-    if (idx === undefined || idx === null) {
-      return '<span class="sq" style="background:' + catColor(cls || "?") + '"></span>';
-    }
+    if (idx === undefined || idx === null) idx = 0;
     return '<span class="cicon" title="' + esc(cls) + '" style="background-position:-' + (idx * 16) + 'px 0"></span>';
   }
 
