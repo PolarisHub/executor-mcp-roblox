@@ -344,6 +344,76 @@ local function getVmEnv()
 	return vmState
 end
 
+--==============================================================================--
+-- mcp.*: in-script tool calls routed over the SAME WebSocket as eval ops.
+-- No executor `request()` call, no HTTP, no JSON encode/decode in user space —
+-- the running script just calls a Lua function and the connector pushes a frame.
+--==============================================================================--
+
+local pendingRpc = {}   -- [id] = { done=false, ok=false, value=nil }
+local rpcCounter = 0
+local currentSend = nil -- set by runConnection while a socket is alive
+
+-- Camel-case to kebab-case for mcp.getPlayers -> "get-players".
+local function camelToKebab(s)
+	if string.find(s, "-", 1, true) then return s end
+	local out = string.gsub(s, "%u", function(c) return "-" .. string.lower(c) end)
+	if string.sub(out, 1, 1) == "-" then out = string.sub(out, 2) end
+	return out
+end
+
+-- Block until the server returns an rpc-result for this id, or timeout. Returns
+-- the result table { ok, data?, error? } or { ok=false, error=<reason> } on miss.
+local function awaitRpc(id, timeoutMs)
+	local deadline = os.clock() + (timeoutMs or 30000) / 1000
+	while not pendingRpc[id].done and os.clock() < deadline do
+		task.wait(0.01)
+	end
+	local pending = pendingRpc[id]
+	pendingRpc[id] = nil
+	if not pending.done then
+		return { ok = false, error = string.format("mcp call timed out after %dms", timeoutMs or 30000) }
+	end
+	return pending.value
+end
+
+-- Build the `mcp` table that the script sees. Each call pushes an rpc-call frame
+-- and yields on the matching reply. Errors as Lua errors so `pcall` works.
+local function buildMcpTable(token)
+	local function call(name, args)
+		if currentSend == nil then
+			error("mcp." .. tostring(name) .. ": bridge socket is not connected.", 0)
+		end
+		if name == "script" then
+			error("mcp.script is disabled (no recursion).", 0)
+		end
+		rpcCounter = rpcCounter + 1
+		local id = "r" .. tostring(rpcCounter)
+		pendingRpc[id] = { done = false, value = nil }
+		local ok, sendErr = pcall(function()
+			currentSend({ type = "rpc-call", id = id, token = token, tool = name, args = args or {} })
+		end)
+		if not ok then
+			pendingRpc[id] = nil
+			error("mcp." .. tostring(name) .. ": send failed: " .. tostring(sendErr), 0)
+		end
+		local result = awaitRpc(id, 30000)
+		if not result.ok then
+			error("mcp." .. tostring(name) .. " -> " .. tostring(result.error), 0)
+		end
+		return result.data
+	end
+
+	return setmetatable({
+		call = function(name, args) return call(name, args) end,
+	}, {
+		__index = function(_, key)
+			local name = camelToKebab(key)
+			return function(args) return call(name, args) end
+		end,
+	})
+end
+
 -- Run a single eval op and return an OpResult-shaped table:
 --   { ok = true, value = <encoded first return value> }
 --   { ok = false, error = <message>, kind = "runtime" | "timeout" }
@@ -369,8 +439,35 @@ local function runEval(op)
 		return { ok = false, error = "compile error: " .. tostring(compileErr), kind = "runtime" }
 	end
 
+	-- Script-tool mode: build a per-run env with `mcp` and captured print/warn,
+	-- layered over the persistent VM env (writes there land back in the VM env so
+	-- user globals still survive across runs).
+	local scriptOutput = nil
+	if typeof(op.scriptToken) == "string" and op.scriptToken ~= "" then
+		local baseEnv = (op.env == "vm") and getVmEnv() or freshVmEnv()
+		scriptOutput = {}
+		local mcp = buildMcpTable(op.scriptToken)
+		local realPrint, realWarn = GLOBAL_ENV.print, GLOBAL_ENV.warn
+		local function cap(real)
+			return function(...)
+				local n = select("#", ...)
+				local parts = (table.create and table.create(n)) or {}
+				for i = 1, n do parts[i] = tostring((select(i, ...))) end
+				if #scriptOutput < 1000 then
+					scriptOutput[#scriptOutput + 1] = table.concat(parts, "\t")
+				end
+				pcall(real, ...)
+			end
+		end
+		local runEnv = setmetatable(
+			{ print = cap(realPrint), warn = cap(realWarn), mcp = mcp },
+			{ __index = baseEnv, __newindex = baseEnv }
+		)
+		pcall(function()
+			if isCallable(setfenv) then setfenv(fn, runEnv) end
+		end)
 	-- Persistent VM: run inside the reusable sandbox so globals survive across runs.
-	if op.env == "vm" then
+	elseif op.env == "vm" then
 		pcall(function()
 			if isCallable(setfenv) then
 				setfenv(fn, getVmEnv())
@@ -424,7 +521,19 @@ local function runEval(op)
 	end
 
 	if not succeeded then
+		-- In script-tool mode, a runtime error is still returned as a regular value
+		-- so the AI sees its captured output alongside the failure.
+		if scriptOutput ~= nil then
+			local _, packed = pcall(encodeForJson, { error = "runtime error: " .. tostring(runErr), output = scriptOutput })
+			return { ok = true, value = packed }
+		end
 		return { ok = false, error = tostring(runErr), kind = "runtime" }
+	end
+
+	-- Script-tool mode: package the user's return value with the captured output.
+	if scriptOutput ~= nil then
+		local _, packed = pcall(encodeForJson, { result = firstValue, output = scriptOutput })
+		return { ok = true, value = packed }
 	end
 
 	-- Encode the captured value defensively: a bad encoder/serializer must not
@@ -525,6 +634,8 @@ local function runConnection()
 			socket:Send(payload)
 		end)
 	end
+	-- Expose this connection's send to module-level features (mcp.* RPC).
+	currentSend = send
 
 	-- Dispatch one decoded inbound message. Always pcall-guarded by the caller.
 	local function handleMessage(message)
@@ -560,6 +671,14 @@ local function runConnection()
 					id = id,
 					result = { ok = false, error = "unsupported op kind: " .. tostring(op.kind), kind = "runtime" },
 				})
+			end
+			return
+		elseif mtype == "rpc-result" then
+			-- A script-in-flight is awaiting this id; resolve its pending entry.
+			local pending = pendingRpc[message.id]
+			if pending ~= nil then
+				pending.value = message.result
+				pending.done = true
 			end
 			return
 		end
@@ -628,6 +747,14 @@ local function runConnection()
 			outConn:Disconnect()
 		end
 	end)
+
+	-- Reject any RPC calls left in flight so awaiting scripts unblock instead of hanging.
+	currentSend = nil
+	for id, pending in pairs(pendingRpc) do
+		pending.value = { ok = false, error = "bridge disconnected" }
+		pending.done = true
+		pendingRpc[id] = nil
+	end
 
 	pcall(function()
 		socket:Close()

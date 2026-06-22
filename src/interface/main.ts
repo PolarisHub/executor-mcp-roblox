@@ -126,9 +126,12 @@ function compose(): Application {
     scriptBridge,
   });
   scriptBridge.attach(invoker);
+  bridge.attachScripting(scriptBridge);
 
-  // Token-gated bridge that the `script` tool's in-game `mcp.<tool>()` calls hit.
-  // The token is minted per script run and known only to that running Luau.
+  // Legacy fallback: the old HTTP path is kept for older connectors that don't
+  // know about the WebSocket-native `rpc-call` frames. New connectors route every
+  // `mcp.<tool>()` over the WebSocket instead, removing the executor `request()`
+  // dependency from the hot path entirely.
   bridge.addRoutes((app) => {
     app.post("/api/exec-tool", async (c) => {
       let payload: { token?: unknown; tool?: unknown; args?: unknown };

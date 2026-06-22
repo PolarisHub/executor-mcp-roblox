@@ -13,6 +13,10 @@ coverage/
 # Migration scratch (legacy upstream source kept locally as a porting reference)
 _legacy/
 
+# Upstream Luau source (luau-lang/luau) — vendored locally as a reference for
+# reimplementing connector hot paths in pure Luau. NEVER push (license + bloat).
+_luau/
+
 # Logs
 *.log
 logs/

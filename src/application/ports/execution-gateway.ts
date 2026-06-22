@@ -9,6 +9,8 @@ export interface EvalRequest {
   readonly timeoutMs?: number;
   /** "vm" runs in the persistent VM env; "vm-reset" wipes it; omitted = fresh. */
   readonly env?: "fresh" | "vm" | "vm-reset";
+  /** Per-run token that gates inbound `rpc-call` frames from this script's mcp.* calls. */
+  readonly scriptToken?: string;
 }
 
 /**

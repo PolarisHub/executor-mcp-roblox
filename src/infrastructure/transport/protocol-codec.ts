@@ -6,6 +6,7 @@ import type {
   ClientMessage,
   ClientOp,
   OpResult,
+  RpcResult,
   ServerMessage,
 } from "../../domain/protocol/messages.js";
 
@@ -43,7 +44,13 @@ const clientOpSchema = z.object({
   threadContext: z.number(),
   timeoutMs: z.number(),
   env: z.enum(["fresh", "vm", "vm-reset"]).optional(),
+  scriptToken: z.string().optional(),
 }) satisfies z.ZodType<ClientOp>;
+
+const rpcResultSchema = z.union([
+  z.object({ ok: z.literal(true), data: z.unknown() }),
+  z.object({ ok: z.literal(false), error: z.string(), code: z.string().optional() }),
+]) satisfies z.ZodType<RpcResult>;
 
 const serverMessageSchema = z.union([
   z.object({
@@ -53,6 +60,7 @@ const serverMessageSchema = z.union([
   }),
   z.object({ type: z.literal("op"), id: z.string(), op: clientOpSchema }),
   z.object({ type: z.literal("ping"), id: z.string() }),
+  z.object({ type: z.literal("rpc-result"), id: z.string(), result: rpcResultSchema }),
 ]) satisfies z.ZodType<ServerMessage>;
 
 const clientMessageSchema = z.union([
@@ -64,6 +72,13 @@ const clientMessageSchema = z.union([
   z.object({ type: z.literal("result"), id: z.string(), result: opResultSchema }),
   z.object({ type: z.literal("event"), channel: z.string(), data: z.unknown() }),
   z.object({ type: z.literal("pong"), id: z.string() }),
+  z.object({
+    type: z.literal("rpc-call"),
+    id: z.string(),
+    token: z.string(),
+    tool: z.string(),
+    args: z.unknown(),
+  }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 /**

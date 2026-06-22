@@ -21,6 +21,8 @@ export interface LuauOptions {
   readonly timeoutMs?: number;
   /** "vm" runs in the persistent VM environment (globals persist across runs). */
   readonly env?: "fresh" | "vm" | "vm-reset";
+  /** Per-run token that gates `mcp.*` calls made from inside the script. */
+  readonly scriptToken?: string;
 }
 
 /** Lets the `script` tool expose the whole tool surface to in-game Luau as `mcp.*`. */

@@ -28,6 +28,7 @@ import type { EvalRequest, ExecutionGateway } from "../../application/ports/exec
 import type { Logger } from "../../application/ports/logger.js";
 import type { Metrics } from "../../application/ports/metrics.js";
 import type { OutputKind, OutputLog } from "../../application/ports/output-log.js";
+import type { ScriptBridge } from "../../application/services/script-bridge.js";
 import { decodeClientMessage, encodeServerMessage } from "./protocol-codec.js";
 
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([
@@ -82,6 +83,8 @@ interface BridgeDeps {
   readonly metrics: Metrics;
   /** Optional sink for game output streamed over the `event` channel. */
   readonly output?: OutputLog;
+  /** Wired after construction via {@link BridgeServer.attachScripting}. */
+  readonly scriptBridge?: ScriptBridge;
 }
 
 /**
@@ -102,6 +105,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
   private readonly clock: Clock;
   private readonly metrics: Metrics;
   private readonly output?: OutputLog;
+  private scriptBridge: ScriptBridge | null = null;
 
   private readonly connections = new Map<ClientId, Connection>();
   private readonly wss: WebSocketServer;
@@ -115,6 +119,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     this.clock = deps.clock;
     this.metrics = deps.metrics;
     this.output = deps.output;
+    if (deps.scriptBridge) this.scriptBridge = deps.scriptBridge;
 
     this.http = new Hono();
     this.http.get("/health", (c) => c.json({ status: "ok" }));
@@ -221,6 +226,11 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     return this.connections.get(clientId)?.client;
   }
 
+  /** Wire the bridge's RPC routing after construction (breaks the dep cycle). */
+  attachScripting(scriptBridge: ScriptBridge): void {
+    this.scriptBridge = scriptBridge;
+  }
+
   // ── ClientAdmin ──────────────────────────────────────────────────────────────
 
   disconnect(clientId: ClientId, reason = "disconnected from dashboard"): boolean {
@@ -298,6 +308,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
             threadContext,
             timeoutMs,
             ...(request.env ? { env: request.env } : {}),
+            ...(request.scriptToken ? { scriptToken: request.scriptToken } : {}),
           },
         });
       } catch (error) {
@@ -477,11 +488,54 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
         this.logger.warn({ clientId: connection.id }, "duplicate hello ignored");
         return;
       }
+      case "rpc-call": {
+        void this.handleRpcCall(connection, message);
+        return;
+      }
       default: {
         const exhaustive: never = message;
         void exhaustive;
         return;
       }
+    }
+  }
+
+  /**
+   * In-game `mcp.<tool>(args)` calls arrive as `rpc-call` frames over this same
+   * socket. Route them through the {@link ScriptBridge} (token-gated) and reply
+   * with `rpc-result`. Errors are reported back, not thrown, so a flaky tool
+   * never breaks the connection.
+   */
+  private async handleRpcCall(
+    connection: Connection,
+    msg: { id: string; token: string; tool: string; args: unknown },
+  ): Promise<void> {
+    const bridge = this.scriptBridge;
+    if (!bridge) {
+      this.sendRpcResult(connection, msg.id, {
+        ok: false,
+        error: "scripting bridge not attached",
+      });
+      return;
+    }
+    const result = await bridge.run(msg.token, msg.tool, msg.args);
+    this.sendRpcResult(connection, msg.id, result);
+  }
+
+  private sendRpcResult(
+    connection: Connection,
+    id: string,
+    result:
+      | { ok: true; data: unknown }
+      | { ok: false; error: string; code?: string },
+  ): void {
+    try {
+      this.send(connection, { type: "rpc-result", id, result });
+    } catch (error) {
+      this.logger.warn(
+        { err: toDomainError(error).toJSON(), clientId: connection.id, rpcId: id },
+        "failed to send rpc-result",
+      );
     }
   }
 

@@ -40,12 +40,24 @@ export interface ClientOp {
    * The connector falls back to a fresh env if it cannot sandbox.
    */
   readonly env?: "fresh" | "vm" | "vm-reset";
+  /**
+   * When present, the connector pre-binds a built-in `mcp` table in the run env
+   * that routes calls back to the server as `rpc-call` frames (gated by this
+   * token). Print/warn are also captured and returned in `{ result, output }`.
+   * The token is minted server-side per-run and only the script's env sees it.
+   */
+  readonly scriptToken?: string;
 }
 
 /** The outcome of a {@link ClientOp}. */
 export type OpResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly error: string; readonly kind?: "timeout" | "runtime" };
+
+/** Outcome of an `rpc-call` (tool invocation made from inside a running script). */
+export type RpcResult =
+  | { readonly ok: true; readonly data: unknown }
+  | { readonly ok: false; readonly error: string; readonly code?: string };
 
 /** Server -> connector. */
 export type ServerMessage =
@@ -55,11 +67,20 @@ export type ServerMessage =
       readonly heartbeatIntervalMs: number;
     }
   | { readonly type: "op"; readonly id: string; readonly op: ClientOp }
-  | { readonly type: "ping"; readonly id: string };
+  | { readonly type: "ping"; readonly id: string }
+  | { readonly type: "rpc-result"; readonly id: string; readonly result: RpcResult };
 
 /** Connector -> server. */
 export type ClientMessage =
   | { readonly type: "hello"; readonly protocolVersion: number; readonly client: ClientHandshake }
   | { readonly type: "result"; readonly id: string; readonly result: OpResult }
   | { readonly type: "event"; readonly channel: string; readonly data: unknown }
-  | { readonly type: "pong"; readonly id: string };
+  | { readonly type: "pong"; readonly id: string }
+  | {
+      /** A running script invoked `mcp.<tool>(args)`. The server runs the tool and replies `rpc-result`. */
+      readonly type: "rpc-call";
+      readonly id: string;
+      readonly token: string;
+      readonly tool: string;
+      readonly args: unknown;
+    };
