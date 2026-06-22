@@ -89,7 +89,14 @@ function compose(): Application {
 
   // The dashboard (when enabled) claims `/` and the `/api/*` read endpoints.
   if (config.dashboard.enabled) {
-    const dashboard = new Dashboard({ config, clients: bridge, registry, activity, health });
+    const dashboard = new Dashboard({
+      config,
+      clients: bridge,
+      registry,
+      activity,
+      health,
+      gateway: bridge,
+    });
     bridge.addRoutes((app) => dashboard.mount(app));
   } else {
     bridge.addRoutes((app) => app.get("/", (c) => c.text("executor-mcp-roblox")));

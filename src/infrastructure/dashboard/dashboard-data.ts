@@ -1,6 +1,7 @@
 import type { ActivityLog } from "../../application/ports/activity-log.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { AppConfig } from "../../application/ports/config.js";
+import type { ExecutionGateway } from "../../application/ports/execution-gateway.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
 import type { HealthReporter } from "../observability/health.js";
 
@@ -10,6 +11,7 @@ export interface DashboardDeps {
   readonly registry: ToolRegistry;
   readonly activity: ActivityLog;
   readonly health: HealthReporter;
+  readonly gateway: ExecutionGateway;
 }
 
 /** The JSON the dashboard polls. Kept flat and presentational. */
@@ -22,7 +24,7 @@ export interface DashboardState {
     readonly uptimeMs: number;
     readonly startedAt: number;
   };
-  readonly clients: ReadonlyArray<{
+  readonly clients: readonly {
     readonly clientId: string;
     readonly username: string | null;
     readonly displayName: string | null;
@@ -32,15 +34,15 @@ export interface DashboardState {
     readonly executor: string | null;
     readonly capabilities: number;
     readonly connectedAt: number;
-  }>;
+  }[];
   readonly catalog: {
     readonly total: number;
-    readonly categories: ReadonlyArray<{ readonly category: string; readonly count: number }>;
+    readonly categories: readonly { readonly category: string; readonly count: number }[];
   };
   readonly activity: {
     readonly total: number;
     readonly errors: number;
-    readonly recent: ReadonlyArray<{
+    readonly recent: readonly {
       readonly toolName: string;
       readonly category: string;
       readonly outcome: "ok" | "error";
@@ -48,7 +50,7 @@ export interface DashboardState {
       readonly errorCode?: string;
       readonly clientName?: string | null;
       readonly at: number;
-    }>;
+    }[];
   };
 }
 
