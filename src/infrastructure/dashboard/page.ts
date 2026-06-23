@@ -1686,6 +1686,130 @@ return p"></textarea>
     items: null, selected: null, current: null, dirty: false,
     creating: false, running: false, runResult: null, runErr: null, err: null,
   };
+  // Mine a source string for distinctive literals that look like they could be
+  // parameters: quoted strings of reasonable length, numeric literals with
+  // magnitude > 9 (skip 0/1/2/...). Returns { literal, kind, count, suggested }.
+  function pbExtractCandidates(source) {
+    var blacklist = {
+      "true": 1, "false": 1, "nil": 1, "%s": 1, "%d": 1, "%q": 1,
+      "\\n": 1, "\\t": 1, "\\r": 1, "": 1, "n": 1, "t": 1, "r": 1,
+      "+": 1, "-": 1, "*": 1, "/": 1, ".": 1, ":": 1, "=": 1, "(": 1, ")": 1,
+      "{": 1, "}": 1, "[": 1, "]": 1, ",": 1, ";": 1, " ": 1, "  ": 1,
+    };
+    var seen = {};
+    var quoteChars = String.fromCharCode(34) + String.fromCharCode(39);
+    var quoteRe = new RegExp("([" + quoteChars + "])((?:\\\\.|(?!\\1).)*?)\\1", "g");
+    var m;
+    while ((m = quoteRe.exec(source)) !== null) {
+      var lit = m[2];
+      if (!lit || lit.length < 2 || lit.length > 80) continue;
+      if (blacklist[lit] === 1) continue;
+      if (new RegExp("^[\\s,.;:]+$").test(lit)) continue;
+      var key = "s:" + lit;
+      if (!seen[key]) seen[key] = { literal: lit, kind: "string", count: 0, raw: m[0] };
+      seen[key].count += 1;
+    }
+    var numRe = new RegExp("\\b(\\d{2,}(?:\\.\\d+)?)\\b", "g");
+    while ((m = numRe.exec(source)) !== null) {
+      var n = m[1];
+      var asNum = Number(n);
+      if (!Number.isFinite(asNum) || asNum < 10) continue;
+      var key2 = "n:" + n;
+      if (!seen[key2]) seen[key2] = { literal: n, kind: "number", count: 0, raw: n };
+      seen[key2].count += 1;
+    }
+    // Suggest names from keywords + indices
+    var pool = Object.keys(seen).map(function (k) { return seen[k]; });
+    pool.sort(function (a, b) { return b.count - a.count; });
+    var usedNames = {};
+    function nameFor(c, i) {
+      var l = c.literal.toLowerCase();
+      var base;
+      if (/^id$|userid|placeid|jobid|^uid$/.test(l)) base = "id";
+      else if (/path$/.test(l) || l.indexOf(".") !== -1 || l.indexOf("/") !== -1) base = "path";
+      else if (/^(buy|purchase|click|fire|attack|use|trigger)$/.test(l)) base = "action";
+      else if (c.kind === "number") base = (Number(c.literal) > 1000 ? "amount" : "n");
+      else if (c.literal.length >= 16 && /^[0-9a-f-]+$/i.test(c.literal)) base = "token";
+      else base = "name";
+      var nm = base, n = 1;
+      while (usedNames[nm]) { n += 1; nm = base + n; }
+      usedNames[nm] = true;
+      void i;
+      return nm;
+    }
+    pool.forEach(function (c, i) { c.suggested = nameFor(c, i); });
+    return pool.slice(0, 12);
+  }
+  function pbRenderAutoParams(source) {
+    var host = byId("pb-autoparams-panel");
+    if (!host) return;
+    var cands = pbExtractCandidates(source);
+    if (!cands.length) {
+      host.innerHTML = '<div class="muted" style="margin-top:8px;font-size:12px">No distinctive literals worth parameterizing.</div>';
+      setTimeout(function () { host.innerHTML = ""; }, 3500);
+      return;
+    }
+    var rows = cands.map(function (c, i) {
+      var preview = c.kind === "string" ? '"' + (c.literal.length > 40 ? c.literal.slice(0, 38) + "…" : c.literal) + '"' : c.literal;
+      return '<div class="brief-row" style="padding:4px 0">' +
+        '<label style="display:inline-flex;align-items:center;gap:8px;flex:none;width:36px">' +
+          '<input type="checkbox" data-cand="' + i + '" />' +
+        "</label>" +
+        '<div class="mono" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(c.literal) + '">' +
+        esc(preview) + ' <span class="muted" style="font-size:11px">×' + c.count + " " + c.kind + "</span></div>" +
+        '<input class="search" data-name="' + i + '" value="' + esc(c.suggested) + '" style="flex:none;width:140px;margin:0" />' +
+        "</div>";
+    }).join("");
+    host.innerHTML =
+      '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)">' +
+        '<div style="display:flex;align-items:center;margin-bottom:8px">' +
+          '<span class="sec" style="margin:0;flex:1">Suggested parameters</span>' +
+          '<button class="out-btn primary" id="pb-autoapply">Apply</button>' +
+          '<button class="out-btn" id="pb-autoclose" style="margin-left:6px">Close</button>' +
+        "</div>" +
+        rows +
+      "</div>";
+    byId("pb-autoclose").onclick = function () { host.innerHTML = ""; };
+    byId("pb-autoapply").onclick = function () {
+      var src = byId("pb-src").value;
+      var picked = [];
+      host.querySelectorAll('[data-cand]').forEach(function (cb) {
+        if (cb.checked) {
+          var i = parseInt(cb.getAttribute("data-cand"), 10);
+          var nameInput = host.querySelector('[data-name="' + i + '"]');
+          var name = (nameInput && nameInput.value) || cands[i].suggested;
+          name = name.replace(new RegExp("[^A-Za-z0-9_]", "g"), "_").replace(new RegExp("^[0-9]"), "_");
+          picked.push({ cand: cands[i], name: name });
+        }
+      });
+      if (!picked.length) { host.innerHTML = ""; return; }
+      // Apply replacements: for strings, replace the quoted literal (preserving
+      // outer quotes); for numbers, replace the bare number.
+      picked.forEach(function (p) {
+        var c = p.cand;
+        var placeholder = "\${" + p.name + "}";
+        if (c.kind === "string") {
+          // Replace ALL occurrences of "literal" with a dollar-brace placeholder (keeping quotes).
+          var esc1 = c.literal.replace(new RegExp("[.*+?^\${}()|\\[\\]\\\\]", "g"), "\\$&");
+          var re = new RegExp('"' + esc1 + '"|' + "'" + esc1 + "'", "g");
+          src = src.replace(re, '"' + placeholder + '"');
+        } else {
+          // Number: replace bare token only at word boundaries.
+          var nre = new RegExp("\\b" + c.literal.replace(new RegExp("\\.", "g"), "\\.") + "\\b", "g");
+          src = src.replace(nre, placeholder);
+        }
+      });
+      byId("pb-src").value = src;
+      host.innerHTML = "";
+      // Re-render so the params block updates.
+      if (pbState.creating) { pbState.prefillSource = src; renderPlaybookPane(); }
+      else if (pbState.current) {
+        pbState.current = Object.assign({}, pbState.current, { source: src, params: pbExtractParams(src) });
+        renderPlaybookPane();
+      }
+    };
+  }
+
   function pbExtractParams(src) {
     var out = [], seen = {};
     var re = new RegExp("\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}", "g");
@@ -1771,8 +1895,11 @@ return p"></textarea>
       '<input class="search" id="pb-desc" placeholder="description" value="' + esc(pb.description || "") + '" />' +
       '<input class="search" id="pb-tags" placeholder="tags (comma-sep)" value="' + esc((pb.tags || []).join(", ")) + '" />' +
       '</div>' +
-      '<div class="label">Source</div>' +
+      '<div class="label" style="display:flex;align-items:center"><span>Source</span>' +
+        '<button class="out-btn" id="pb-autoparams" title="Detect literals worth parameterizing" style="margin-left:auto;font-size:11px;padding:2px 8px">Auto params</button>' +
+      '</div>' +
       '<textarea class="src" id="pb-src" spellcheck="false">' + esc(pb.source || "") + '</textarea>' +
+      '<div id="pb-autoparams-panel"></div>' +
       (paramRows ? '<div class="label" style="margin-top:10px">Parameters</div>' +
         '<div class="pb-params">' + paramRows + '</div>' : '') +
       '<div class="pb-actions">' +
@@ -1800,6 +1927,8 @@ return p"></textarea>
     };
     var run = byId("pb-run");
     if (run) run.onclick = function () { if (pbState.current) pbRun(pbState.current.name); };
+    var autoBtn = byId("pb-autoparams");
+    if (autoBtn) autoBtn.onclick = function () { pbRenderAutoParams(byId("pb-src").value); };
     var src = byId("pb-src");
     if (src) src.oninput = function () {
       var params = pbExtractParams(src.value);
