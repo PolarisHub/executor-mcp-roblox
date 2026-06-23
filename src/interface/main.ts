@@ -132,6 +132,8 @@ function compose(): Application {
       gateway: bridge,
       output,
       admin: bridge,
+      playbooks,
+      scriptBridge,
     });
     bridge.addRoutes((app) => dashboard.mount(app));
   } else {

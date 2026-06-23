@@ -4,6 +4,8 @@ import type { ClientDirectory } from "../../application/ports/client-directory.j
 import type { AppConfig } from "../../application/ports/config.js";
 import type { ExecutionGateway } from "../../application/ports/execution-gateway.js";
 import type { OutputLog } from "../../application/ports/output-log.js";
+import type { SavedScriptsStore } from "../../application/ports/saved-scripts.js";
+import type { ScriptBridge } from "../../application/services/script-bridge.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
 import type { HealthReporter } from "../observability/health.js";
 
@@ -16,6 +18,8 @@ export interface DashboardDeps {
   readonly gateway: ExecutionGateway;
   readonly output: OutputLog;
   readonly admin: ClientAdmin;
+  readonly playbooks: SavedScriptsStore;
+  readonly scriptBridge: ScriptBridge;
 }
 
 /** The JSON the dashboard polls. Kept flat and presentational. */

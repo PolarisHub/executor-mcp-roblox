@@ -426,6 +426,59 @@ export function renderDashboardPage(): string {
     background: var(--panel-2); color: var(--dim); font-size: 10.5px;
   }
 
+  /* ---- playbooks tab ---- */
+  .pb-layout {
+    display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start;
+  }
+  .pb-list {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+    max-height: 70vh; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .pb-list-head {
+    display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .pb-list-head .sec { margin: 0; flex: 1; }
+  .pb-items { overflow-y: auto; }
+  .pb-item {
+    padding: 10px 12px; border-bottom: 1px solid #1f1f1f; cursor: pointer;
+  }
+  .pb-item:hover { background: var(--hover); }
+  .pb-item.active { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+  .pb-item .nm { font-weight: 500; color: var(--text); }
+  .pb-item .dsc { color: var(--faint); font-size: 11.5px; margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pb-item .ts { color: var(--faint); font-size: 10.5px; margin-top: 2px; }
+  .pb-tags { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 4px; }
+  .pb-tags .chip { font-size: 10px; padding: 1px 5px; }
+
+  .pb-pane {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+    min-height: 60vh; display: flex; flex-direction: column;
+  }
+  .pb-pane .pb-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pb-pane .pb-meta input.search { flex: 1; margin: 0; min-width: 120px; }
+  .pb-pane .label { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .pb-pane .src {
+    width: 100%; min-height: 220px; flex: 1; resize: vertical;
+    background: #101012; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--mono); font-size: 12.5px; padding: 10px 12px; outline: none;
+  }
+  .pb-pane .src:focus { border-color: var(--border-2); }
+  .pb-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .pb-actions .danger { color: var(--err); border-color: rgba(226,92,84,0.3); }
+  .pb-actions .danger:hover { background: rgba(226,92,84,0.08); }
+  .pb-actions .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pb-actions .primary:hover { background: #5a8cf7; }
+  .pb-params { display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; margin: 10px 0; }
+  .pb-params .pname { color: var(--dim); align-self: center; font-family: var(--mono); font-size: 12px; }
+  .pb-params input.search { margin: 0; }
+  .pb-runres {
+    margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); font-family: var(--mono); font-size: 12px;
+    color: var(--dim); white-space: pre-wrap; max-height: 320px; overflow: auto;
+  }
+  .pb-runres.err { border-color: rgba(226,92,84,0.35); color: var(--err); }
+
   /* ---- spy tab ---- */
   .spy-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .spy-bar .search { flex: 1; margin-bottom: 0; }
@@ -521,6 +574,7 @@ export function renderDashboardPage(): string {
   <button data-tab="explorer">Explorer</button>
   <button data-tab="brief">Brief</button>
   <button data-tab="spy">Spy<span class="count" id="t-spy">0</span></button>
+  <button data-tab="playbooks">Playbooks<span class="count" id="t-playbooks">0</span></button>
   <button data-tab="output">Output<span class="count" id="t-output">0</span></button>
 </nav>
 
@@ -543,6 +597,19 @@ export function renderDashboardPage(): string {
   <section class="panel" id="panel-explorer"></section>
 
   <section class="panel" id="panel-brief"></section>
+
+  <section class="panel" id="panel-playbooks">
+    <div class="pb-layout">
+      <aside class="pb-list">
+        <div class="pb-list-head">
+          <span class="sec">Playbooks</span>
+          <button class="out-btn" id="pb-new" title="New playbook">+ New</button>
+        </div>
+        <div class="pb-items" id="pb-items"></div>
+      </aside>
+      <div class="pb-pane" id="pb-pane"></div>
+    </div>
+  </section>
 
   <section class="panel" id="panel-spy">
     <div class="spy-bar">
@@ -665,6 +732,7 @@ export function renderDashboardPage(): string {
     if (tab === "output") renderOutput();
     if (tab === "brief") renderBrief();
     if (tab === "spy") renderSpy();
+    if (tab === "playbooks") renderPlaybooks();
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -1340,8 +1408,251 @@ export function renderDashboardPage(): string {
     }).catch(function () {});
   }
 
+  // ---- playbooks tab ----
+  var pbState = {
+    items: null, selected: null, current: null, dirty: false,
+    creating: false, running: false, runResult: null, runErr: null, err: null,
+  };
+  function pbExtractParams(src) {
+    var out = [], seen = {};
+    var re = new RegExp("\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}", "g");
+    var m;
+    while ((m = re.exec(src)) !== null) {
+      if (!seen[m[1]]) { seen[m[1]] = true; out.push(m[1]); }
+    }
+    return out;
+  }
+  function pbItemHtml(p, active) {
+    var tags = (p.tags || []).map(function (t) { return '<span class="chip">' + esc(t) + '</span>'; }).join("");
+    return '<div class="pb-item' + (active ? " active" : "") + '" data-pb="' + esc(p.name) + '">' +
+      '<div class="nm">' + esc(p.name) + '</div>' +
+      (p.description ? '<div class="dsc">' + esc(p.description) + '</div>' : '') +
+      (tags ? '<div class="pb-tags">' + tags + '</div>' : '') +
+      '<div class="ts">' + (p.updatedAt ? relTime(p.updatedAt) : '—') + '</div>' +
+      '</div>';
+  }
+  function renderPlaybookList() {
+    var host = byId("pb-items");
+    if (!host) return;
+    if (!pbState.items) {
+      host.innerHTML = '<div class="empty"><span class="spin"></span></div>';
+      return;
+    }
+    if (!pbState.items.length) {
+      host.innerHTML = '<div class="empty"><div class="h">No playbooks yet</div>' +
+        '<div class="s">Click + New to save your first recipe.</div></div>';
+      byId("t-playbooks").textContent = 0;
+      return;
+    }
+    byId("t-playbooks").textContent = pbState.items.length;
+    host.innerHTML = pbState.items.map(function (p) {
+      return pbItemHtml(p, p.name === pbState.selected);
+    }).join("");
+    host.onclick = function (e) {
+      var row = e.target.closest(".pb-item");
+      if (!row) return;
+      var name = row.getAttribute("data-pb");
+      pbSelect(name);
+    };
+  }
+  function renderPlaybookPane() {
+    var pane = byId("pb-pane");
+    if (!pane) return;
+    if (pbState.err) {
+      pane.innerHTML = '<div class="err-msg">' + esc(pbState.err) + '</div>';
+      return;
+    }
+    if (pbState.creating) {
+      pane.innerHTML = renderPbForm({ name: "", source: "", description: "", tags: [], params: [] }, true);
+      pbWirePane();
+      return;
+    }
+    if (!pbState.current) {
+      pane.innerHTML = '<div class="empty"><div class="h">' +
+        (pbState.items && pbState.items.length ? "Pick a playbook to view it" : "No playbook selected") +
+        '</div></div>';
+      return;
+    }
+    pane.innerHTML = renderPbForm(pbState.current, false);
+    pbWirePane();
+  }
+  function renderPbForm(pb, isNew) {
+    var paramRows = (pb.params || []).map(function (p) {
+      return '<div class="pname">${' + esc(p) + '}</div>' +
+        '<input class="search" data-param="' + esc(p) + '" placeholder="value" />';
+    }).join("");
+    var runRes = "";
+    if (pbState.runErr) {
+      runRes = '<div class="pb-runres err">' + esc(pbState.runErr) + '</div>';
+    } else if (pbState.runResult) {
+      var pretty;
+      try { pretty = JSON.stringify(pbState.runResult, null, 2); }
+      catch (e) { pretty = String(pbState.runResult); }
+      runRes = '<div class="pb-runres">' + esc(pretty) + '</div>';
+    }
+    return '<div class="pb-meta">' +
+      '<input class="search" id="pb-name" placeholder="name" value="' + esc(pb.name) + '" ' + (isNew ? "" : "readonly") + ' />' +
+      '<input class="search" id="pb-desc" placeholder="description" value="' + esc(pb.description || "") + '" />' +
+      '<input class="search" id="pb-tags" placeholder="tags (comma-sep)" value="' + esc((pb.tags || []).join(", ")) + '" />' +
+      '</div>' +
+      '<div class="label">Source</div>' +
+      '<textarea class="src" id="pb-src" spellcheck="false">' + esc(pb.source || "") + '</textarea>' +
+      (paramRows ? '<div class="label" style="margin-top:10px">Parameters</div>' +
+        '<div class="pb-params">' + paramRows + '</div>' : '') +
+      '<div class="pb-actions">' +
+        '<button class="out-btn primary" id="pb-save">' + (isNew ? "Create" : "Save") + '</button>' +
+        (!isNew ? '<button class="out-btn" id="pb-run">' + (pbState.running ? "Running…" : "Run on selected client") + '</button>' : '') +
+        (!isNew ? '<button class="out-btn danger" id="pb-delete">Delete</button>' : '') +
+        '<button class="out-btn" id="pb-cancel">' + (isNew ? "Cancel" : "Close") + '</button>' +
+      '</div>' +
+      runRes;
+  }
+  function pbWirePane() {
+    var save = byId("pb-save");
+    if (save) save.onclick = function () { pbSaveCurrent(byId("pb-name").value); };
+    var cancel = byId("pb-cancel");
+    if (cancel) cancel.onclick = function () {
+      pbState.creating = false; pbState.current = null; pbState.selected = null;
+      pbState.runResult = null; pbState.runErr = null;
+      renderPlaybooks();
+    };
+    var del = byId("pb-delete");
+    if (del) del.onclick = function () {
+      if (!pbState.current) return;
+      if (!confirm('Delete playbook "' + pbState.current.name + '"?')) return;
+      pbDelete(pbState.current.name);
+    };
+    var run = byId("pb-run");
+    if (run) run.onclick = function () { if (pbState.current) pbRun(pbState.current.name); };
+    var src = byId("pb-src");
+    if (src) src.oninput = function () {
+      var params = pbExtractParams(src.value);
+      // Auto-detect dollar-brace placeholders and re-render the params block.
+      var prev = (pbState.current && pbState.current.params) || [];
+      if (JSON.stringify(prev) !== JSON.stringify(params)) {
+        if (pbState.creating) {
+          renderPlaybookPane();
+          // restore focus + cursor
+          var t = byId("pb-src"); if (t) { t.focus(); t.value = src.value; }
+        } else {
+          pbState.current = Object.assign({}, pbState.current, { params: params });
+          renderPlaybookPane();
+          var t2 = byId("pb-src"); if (t2) { t2.focus(); t2.value = src.value; }
+        }
+      }
+    };
+  }
+  function pbSelect(name) {
+    pbState.selected = name;
+    pbState.creating = false;
+    pbState.runResult = null;
+    pbState.runErr = null;
+    fetch("/api/playbooks/" + encodeURIComponent(name))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data && data.error) { pbState.err = data.error; pbState.current = null; }
+        else {
+          pbState.err = null;
+          // Make sure we have a params array populated either from saved data or by scanning the source.
+          var params = (data && data.params && data.params.length) ? data.params : pbExtractParams((data && data.source) || "");
+          pbState.current = Object.assign({}, data, { params: params });
+        }
+        if (activeTab === "playbooks") renderPlaybooks();
+      })
+      .catch(function () {
+        pbState.err = "Request failed.";
+        if (activeTab === "playbooks") renderPlaybooks();
+      });
+  }
+  function pbSaveCurrent(name) {
+    var src = byId("pb-src").value;
+    var desc = byId("pb-desc").value;
+    var tagsRaw = byId("pb-tags").value;
+    var tags = tagsRaw.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    var params = pbExtractParams(src);
+    fetch("/api/playbooks/" + encodeURIComponent(name), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: src, description: desc, tags: tags, params: params }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) {
+          pbState.runErr = (data && data.error) || "Save failed.";
+        } else {
+          pbState.runErr = null;
+          pbState.creating = false;
+          pbState.selected = name;
+        }
+        pbLoadList(function () { if (pbState.selected) pbSelect(pbState.selected); else renderPlaybooks(); });
+      })
+      .catch(function () { pbState.runErr = "Save failed."; renderPlaybooks(); });
+  }
+  function pbDelete(name) {
+    fetch("/api/playbooks/" + encodeURIComponent(name), { method: "DELETE" })
+      .then(function () {
+        pbState.current = null; pbState.selected = null;
+        pbState.runResult = null; pbState.runErr = null;
+        pbLoadList(function () { renderPlaybooks(); });
+      })
+      .catch(function () {});
+  }
+  function pbRun(name) {
+    var clientId = (exp && exp.clientId) || (state && state.clients[0] && state.clients[0].clientId) || null;
+    if (!clientId) { pbState.runErr = "No client connected to run on."; renderPlaybooks(); return; }
+    var params = {};
+    document.querySelectorAll("[data-param]").forEach(function (n) {
+      params[n.getAttribute("data-param")] = n.value;
+    });
+    pbState.running = true; pbState.runResult = null; pbState.runErr = null;
+    renderPlaybookPane();
+    fetch("/api/playbooks/" + encodeURIComponent(name) + "/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: clientId, params: params }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        pbState.running = false;
+        if (!data || !data.ok) pbState.runErr = (data && data.error) || "Run failed.";
+        else pbState.runResult = data.data;
+        renderPlaybookPane();
+      })
+      .catch(function () { pbState.running = false; pbState.runErr = "Run failed."; renderPlaybookPane(); });
+  }
+  function pbLoadList(then) {
+    fetch("/api/playbooks")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        pbState.items = (data && data.playbooks) || [];
+        if (typeof then === "function") then();
+        else if (activeTab === "playbooks") renderPlaybooks();
+        else byId("t-playbooks").textContent = pbState.items.length;
+      })
+      .catch(function () {
+        pbState.items = [];
+        renderPlaybooks();
+      });
+  }
+  function renderPlaybooks() {
+    if (pbState.items === null) { pbLoadList(); return; }
+    renderPlaybookList();
+    renderPlaybookPane();
+  }
+  // Initial load so the tab badge shows a count even before the user opens it.
+  pbLoadList();
+  // Wire the "+ New" button (panel is always in the DOM).
+  setTimeout(function () {
+    var nb = byId("pb-new");
+    if (nb) nb.onclick = function () {
+      pbState.creating = true; pbState.current = null; pbState.selected = null;
+      pbState.runResult = null; pbState.runErr = null;
+      renderPlaybooks();
+      setTimeout(function () { var f = byId("pb-name"); if (f) f.focus(); }, 0);
+    };
+  }, 0);
+
   // ---- spy tab ----
-  var spyState = { clientId: null, data: null, err: null, filter: "", autoRefresh: true };
   function spyArgsPreview(args) {
     if (!Array.isArray(args)) return "";
     try { return JSON.stringify(args).slice(0, 240); }

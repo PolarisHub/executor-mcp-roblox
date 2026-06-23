@@ -10,6 +10,7 @@ import { BriefService } from "./dashboard-brief.js";
 import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
 import { ExplorerService } from "./dashboard-explorer.js";
+import { PlaybookService } from "./dashboard-playbooks.js";
 import { SpyService } from "./dashboard-spy.js";
 import { renderDashboardPage } from "./page.js";
 import { zodToJsonSchema } from "./zod-json-schema.js";
@@ -27,12 +28,21 @@ export class Dashboard {
   private readonly explorer: ExplorerService;
   private readonly brief: BriefService;
   private readonly spy: SpyService;
+  private readonly playbookSvc: PlaybookService;
   private classIcons: ArrayBuffer | null = null;
 
   constructor(private readonly deps: DashboardDeps) {
     this.explorer = new ExplorerService(deps.gateway, deps.clients);
     this.brief = new BriefService(deps.gateway, deps.clients);
     this.spy = new SpyService(deps.gateway, deps.clients);
+    this.playbookSvc = new PlaybookService(
+      deps.playbooks,
+      deps.gateway,
+      deps.clients,
+      deps.scriptBridge,
+      deps.registry,
+      deps.config,
+    );
   }
 
   mount(app: Hono): void {
@@ -112,6 +122,87 @@ export class Dashboard {
         return c.json({ error: err.message, code: err.code }, 502);
       }
     });
+    app.get("/api/playbooks", async (c) => {
+      const items = await this.playbookSvc.list();
+      return c.json({
+        total: items.length,
+        playbooks: items.map((p) => ({
+          name: p.name,
+          description: p.description ?? null,
+          tags: p.tags ?? [],
+          params: p.params ?? [],
+          createdAt: p.createdAt ?? null,
+          updatedAt: p.updatedAt ?? null,
+        })),
+      });
+    });
+    app.get("/api/playbooks/:name", async (c) => {
+      const name = c.req.param("name");
+      if (!name) return c.json({ error: "missing name" }, 400);
+      const pb = await this.playbookSvc.get(name);
+      if (!pb) return c.json({ error: `No playbook "${name}".` }, 404);
+      return c.json(pb);
+    });
+    app.put("/api/playbooks/:name", async (c) => {
+      const name = c.req.param("name");
+      if (!name) return c.json({ error: "missing name" }, 400);
+      let body: { source?: unknown; description?: unknown; tags?: unknown; params?: unknown };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      if (typeof body.source !== "string" || body.source.length === 0) {
+        return c.json({ error: "body must include non-empty source: string" }, 400);
+      }
+      try {
+        const saved = await this.playbookSvc.save({
+          name,
+          source: body.source,
+          ...(typeof body.description === "string" ? { description: body.description } : {}),
+          ...(Array.isArray(body.tags) ? { tags: body.tags as string[] } : {}),
+          ...(Array.isArray(body.params) ? { params: body.params as string[] } : {}),
+        });
+        return c.json({ ok: true, name: saved.name, updatedAt: saved.updatedAt });
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ ok: false, error: err.message, code: err.code }, 400);
+      }
+    });
+    app.delete("/api/playbooks/:name", async (c) => {
+      const name = c.req.param("name");
+      if (!name) return c.json({ error: "missing name" }, 400);
+      const removed = await this.playbookSvc.delete(name);
+      return c.json({ ok: true, removed });
+    });
+    app.post("/api/playbooks/:name/run", async (c) => {
+      const name = c.req.param("name");
+      if (!name) return c.json({ error: "missing name" }, 400);
+      let body: { clientId?: unknown; params?: unknown; persistent?: unknown; timeoutMs?: unknown };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const clientId = typeof body.clientId === "string" ? body.clientId : "";
+      if (!clientId) return c.json({ error: "body.clientId is required" }, 400);
+      try {
+        const data = await this.playbookSvc.run(
+          name,
+          clientId,
+          (body.params as Record<string, string> | undefined) ?? undefined,
+          {
+            ...(typeof body.persistent === "boolean" ? { persistent: body.persistent } : {}),
+            ...(typeof body.timeoutMs === "number" ? { timeoutMs: body.timeoutMs } : {}),
+          },
+        );
+        return c.json({ ok: true, data });
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ ok: false, error: err.message, code: err.code }, 502);
+      }
+    });
+
     app.get("/api/spy/logs", async (c) => {
       const clientId = c.req.query("client") ?? "";
       if (!clientId) return c.json({ error: "missing ?client" }, 400);
