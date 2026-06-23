@@ -215,6 +215,24 @@ export function renderDashboardPage(): string {
   tr.clickable .go svg { width: 13px; height: 13px; }
   td.go-cell { text-align: right; width: 1%; }
 
+  /* place / job cell: stacked PlaceId + truncated JobId chip */
+  td.place-cell { vertical-align: middle; }
+  td.place-cell .mono.num { color: var(--dim); }
+  td.place-cell .jobid {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--faint);
+    cursor: pointer;
+    display: inline-flex; align-items: center;
+    padding: 1px 6px; border-radius: 4px;
+    border: 1px solid transparent;
+    transition: color .12s ease, border-color .12s ease, background-color .12s ease;
+  }
+  td.place-cell .jobid:hover {
+    color: var(--dim); background: var(--panel-2); border-color: var(--border);
+  }
+  td.place-cell .jobid.copied { color: var(--ok); border-color: rgba(94,194,110,0.3); }
+
   /* ---- disconnect button ---- */
   td.kill-cell { width: 36px; padding-right: 14px; padding-left: 4px; text-align: right; }
   .kill {
@@ -614,7 +632,10 @@ export function renderDashboardPage(): string {
         '">' + "<td><div class=\\"who\\">" + av + "<div><div class=\\"nm\\">" + esc(name) +
         '</div><div class="id">' + esc(c.username || "") + (c.userId ? " · " + c.userId : "") + "</div></div></div></td>" +
         '<td><span class="chip">' + esc(c.executor || "unknown") + "</span></td>" +
-        '<td class="mono num muted">' + (c.placeId || "—") + "</td>" +
+        '<td class="place-cell"><div class="mono num">' + (c.placeId || "—") + "</div>" +
+        (c.jobId
+          ? '<div class="jobid mono" title="' + esc(c.jobId) + '" data-copy="' + esc(c.jobId) + '">job · ' + esc(String(c.jobId).slice(0, 8)) + "…</div>"
+          : "") + "</td>" +
         '<td class="num muted">' + c.capabilities + "</td>" +
         '<td class="faint" data-at="' + c.connectedAt + '">' + relTime(c.connectedAt) + "</td>" +
         '<td class="go-cell">' + go + "</td>" +
@@ -628,6 +649,18 @@ export function renderDashboardPage(): string {
       if (btn) {
         e.stopPropagation();
         handleKillClick(btn);
+        return;
+      }
+      var jobChip = e.target.closest(".jobid");
+      if (jobChip) {
+        e.stopPropagation();
+        var jid = jobChip.getAttribute("data-copy") || "";
+        if (jid && navigator.clipboard) {
+          navigator.clipboard.writeText(jid).then(function () {
+            jobChip.classList.add("copied");
+            setTimeout(function () { jobChip.classList.remove("copied"); }, 1000);
+          }).catch(function () {});
+        }
         return;
       }
       var tr = e.target.closest("tr.clickable");
