@@ -399,6 +399,33 @@ export function renderDashboardPage(): string {
   .err-msg { color: var(--err); opacity: .85; padding: 12px; font-size: 12px; }
 
   /* ---- output console ---- */
+  /* ---- brief tab ---- */
+  .brief-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px; margin-bottom: 18px;
+  }
+  .brief-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .brief-h {
+    font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .brief-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; font-size: 12.5px; }
+  .brief-k { color: var(--dim); flex: none; min-width: 140px; }
+  .brief-v { color: var(--text); }
+  .brief-v .copy { cursor: pointer; border-bottom: 1px dashed transparent; }
+  .brief-v .copy:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  .brief-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .brief-section-head { display: flex; align-items: center; margin-bottom: 10px; }
+  .brief-section-head .sec { margin: 0; flex: 1; }
+  .rchip {
+    display: inline-block; padding: 1px 6px; margin: 0 3px 3px 0;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: var(--panel-2); color: var(--dim); font-size: 10.5px;
+  }
+
   .out-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .out-filter { flex: 1; margin-bottom: 0; }
   .out-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); white-space: nowrap; cursor: pointer; }
@@ -474,6 +501,7 @@ export function renderDashboardPage(): string {
   <button data-tab="tools">Tools<span class="count" id="t-tools">0</span></button>
   <button data-tab="activity">Activity<span class="count" id="t-activity">0</span></button>
   <button data-tab="explorer">Explorer</button>
+  <button data-tab="brief">Brief</button>
   <button data-tab="output">Output<span class="count" id="t-output">0</span></button>
 </nav>
 
@@ -494,6 +522,8 @@ export function renderDashboardPage(): string {
   <section class="panel" id="panel-activity"></section>
 
   <section class="panel" id="panel-explorer"></section>
+
+  <section class="panel" id="panel-brief"></section>
 
   <section class="panel" id="panel-output">
     <div class="out-bar">
@@ -603,6 +633,7 @@ export function renderDashboardPage(): string {
     for (var j = 0; j < panels.length; j++) panels[j].classList.toggle("active", panels[j].id === "panel-" + tab);
     if (tab === "explorer") renderExplorer();
     if (tab === "output") renderOutput();
+    if (tab === "brief") renderBrief();
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -1276,6 +1307,139 @@ export function renderDashboardPage(): string {
       iconMap = data || {};
       if (activeTab === "explorer" && exp.clientId) renderExplorer();
     }).catch(function () {});
+  }
+
+  // ---- brief tab ----
+  var briefState = { clientId: null, summary: null, values: null, valuesLoading: false, summaryErr: null, valuesErr: null };
+  function fmtNum(v) { if (typeof v !== "number") return esc(String(v)); return v.toLocaleString(); }
+  function renderBrief() {
+    var el = byId("panel-brief");
+    if (!state) { el.innerHTML = ""; return; }
+    // Target the currently-explored client if any, else the first connected one.
+    var clientId = (exp && exp.clientId) || (state.clients[0] && state.clients[0].clientId) || null;
+    if (briefState.clientId !== clientId) {
+      briefState.clientId = clientId;
+      briefState.summary = null;
+      briefState.values = null;
+      briefState.summaryErr = null;
+      briefState.valuesErr = null;
+    }
+    if (!clientId) {
+      el.innerHTML = '<div class="empty"><div class="h">No client connected</div>' +
+        '<div class="s">Run the loader in your executor; the brief will populate from the first connected game.</div></div>';
+      return;
+    }
+    if (!briefState.summary && !briefState.summaryErr) loadBriefSummary(clientId);
+    var s = briefState.summary;
+    var meta = "";
+    if (briefState.summaryErr) {
+      meta = '<div class="brief-card"><div class="err-msg">' + esc(briefState.summaryErr) + '</div></div>';
+    } else if (!s) {
+      meta = '<div class="brief-card"><div class="loading"><span class="spin"></span>Loading place…</div></div>';
+    } else if (s.error) {
+      meta = '<div class="brief-card"><div class="err-msg">' + esc(s.error) + '</div></div>';
+    } else {
+      var p = s.place || {}, c = s.counts || {}, who = s.player || {};
+      function row(k, v) { return '<div class="brief-row"><div class="brief-k">' + esc(k) + '</div><div class="brief-v mono">' + v + '</div></div>'; }
+      meta =
+        '<div class="brief-card"><div class="brief-h">Place</div>' +
+        row("PlaceId", '<span class="copy" data-copy="' + esc(String(p.placeId || "")) + '">' + esc(String(p.placeId || "—")) + "</span>") +
+        row("GameId", esc(String(p.gameId || "—"))) +
+        row("PlaceVersion", esc(String(p.placeVersion || "—"))) +
+        row("JobId", '<span class="copy" data-copy="' + esc(String(p.jobId || "")) + '" title="' + esc(String(p.jobId || "")) + '">' + esc(String(p.jobId || "—").slice(0, 14) + (String(p.jobId || "").length > 14 ? "…" : "")) + "</span>") +
+        row("CreatorType", esc(String(p.creatorType || "—")) + ' · id ' + esc(String(p.creatorId || "—"))) +
+        row("Players", fmtNum(p.numPlayers || 0) + " / " + fmtNum(p.maxPlayers || 0)) +
+        "</div>" +
+        '<div class="brief-card"><div class="brief-h">Surfaces</div>' +
+        row("ReplicatedStorage", '<span class="muted">' + (c.replicated ? (c.replicated.total + " items") : "—") + "</span>") +
+        row("• RemoteEvent", fmtNum((c.replicated && c.replicated.RemoteEvent) || 0)) +
+        row("• RemoteFunction", fmtNum((c.replicated && c.replicated.RemoteFunction) || 0)) +
+        row("• ModuleScript", fmtNum((c.replicated && c.replicated.ModuleScript) || 0)) +
+        row("Workspace scripts", fmtNum(((c.workspace && c.workspace.Script) || 0) + ((c.workspace && c.workspace.LocalScript) || 0))) +
+        row("StarterPack Tools", fmtNum((c.starterPack && c.starterPack.Tool) || 0)) +
+        "</div>" +
+        '<div class="brief-card"><div class="brief-h">Local Player</div>' +
+        row("Name", esc(who.name || "—")) +
+        row("DisplayName", esc(who.displayName || "—")) +
+        row("UserId", esc(String(who.userId || "—"))) +
+        "</div>";
+    }
+
+    var v = briefState.values;
+    var valuesHtml = "";
+    if (briefState.valuesErr) {
+      valuesHtml = '<div class="err-msg">' + esc(briefState.valuesErr) + '</div>';
+    } else if (briefState.valuesLoading) {
+      valuesHtml = '<div class="loading"><span class="spin"></span>Scanning leaderstats / Player / ReplicatedStorage…</div>';
+    } else if (v && v.candidates) {
+      if (!v.candidates.length) {
+        valuesHtml = '<div class="muted">No candidate value paths found in the usual spots.</div>';
+      } else {
+        var rows = v.candidates.map(function (c) {
+          var reasons = (c.reasons || []).map(function (r) { return '<span class="rchip">' + esc(r) + '</span>'; }).join("");
+          return '<tr><td class="num muted">' + c.score + "</td>" +
+            '<td class="mono">' + esc(c.path) + "</td>" +
+            '<td>' + esc(c.class) + "</td>" +
+            '<td class="mono">' + esc(String(c.value)) + "</td>" +
+            '<td>' + reasons + "</td></tr>";
+        }).join("");
+        valuesHtml = '<div class="table-wrap"><table><thead><tr><th>Score</th><th>Path</th><th>Class</th><th>Value</th><th>Reasons</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+      }
+    } else {
+      valuesHtml = '<div class="muted">Click <b>Discover values</b> to scan candidate money/score/xp paths.</div>';
+    }
+
+    el.innerHTML =
+      '<div class="brief-grid">' + meta + '</div>' +
+      '<div class="brief-section">' +
+        '<div class="brief-section-head"><span class="sec">Candidate value paths</span>' +
+          '<button class="out-btn" id="brief-scan">' + (briefState.valuesLoading ? "Scanning…" : "Discover values") + '</button>' +
+        '</div>' + valuesHtml +
+      '</div>';
+
+    var scanBtn = byId("brief-scan");
+    if (scanBtn) scanBtn.onclick = function () { loadBriefValues(briefState.clientId); };
+    // Wire .copy click-to-copy on PlaceId / JobId
+    el.querySelectorAll(".copy").forEach(function (n) {
+      n.onclick = function () {
+        var v = n.getAttribute("data-copy") || "";
+        if (v && navigator.clipboard) navigator.clipboard.writeText(v).catch(function () {});
+      };
+    });
+  }
+  function loadBriefSummary(clientId) {
+    fetch("/api/brief?client=" + encodeURIComponent(clientId))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (briefState.clientId !== clientId) return;
+        if (data && data.error) briefState.summaryErr = data.error;
+        else briefState.summary = data;
+        if (activeTab === "brief") renderBrief();
+      })
+      .catch(function () {
+        if (briefState.clientId !== clientId) return;
+        briefState.summaryErr = "Request failed.";
+        if (activeTab === "brief") renderBrief();
+      });
+  }
+  function loadBriefValues(clientId) {
+    if (!clientId) return;
+    briefState.valuesLoading = true; briefState.valuesErr = null; renderBrief();
+    fetch("/api/brief/values?client=" + encodeURIComponent(clientId) + "&limit=80")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        briefState.valuesLoading = false;
+        if (briefState.clientId !== clientId) return;
+        if (data && data.error) briefState.valuesErr = data.error;
+        else briefState.values = data;
+        renderBrief();
+      })
+      .catch(function () {
+        briefState.valuesLoading = false;
+        if (briefState.clientId !== clientId) return;
+        briefState.valuesErr = "Request failed.";
+        renderBrief();
+      });
   }
 
   // ---- output console ----

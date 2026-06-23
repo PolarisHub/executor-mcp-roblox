@@ -6,6 +6,7 @@ import type { Context, Hono } from "hono";
 
 import { toDomainError } from "../../domain/errors/errors.js";
 import { ClientId } from "../../domain/shared/ids.js";
+import { BriefService } from "./dashboard-brief.js";
 import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
 import { ExplorerService } from "./dashboard-explorer.js";
@@ -23,10 +24,12 @@ const CLASS_ICONS_PNG = join(dirname(fileURLToPath(import.meta.url)), "../../../
  */
 export class Dashboard {
   private readonly explorer: ExplorerService;
+  private readonly brief: BriefService;
   private classIcons: ArrayBuffer | null = null;
 
   constructor(private readonly deps: DashboardDeps) {
     this.explorer = new ExplorerService(deps.gateway, deps.clients);
+    this.brief = new BriefService(deps.gateway, deps.clients);
   }
 
   mount(app: Hono): void {
@@ -95,6 +98,28 @@ export class Dashboard {
           return c.json({ error: err.message, code: err.code }, 502);
         }
       };
+
+    app.get("/api/brief", async (c) => {
+      const clientId = c.req.query("client") ?? "";
+      if (!clientId) return c.json({ error: "missing ?client" }, 400);
+      try {
+        return c.json(await this.brief.summary(clientId));
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ error: err.message, code: err.code }, 502);
+      }
+    });
+    app.get("/api/brief/values", async (c) => {
+      const clientId = c.req.query("client") ?? "";
+      if (!clientId) return c.json({ error: "missing ?client" }, 400);
+      const limit = Number(c.req.query("limit")) || 50;
+      try {
+        return c.json(await this.brief.values(clientId, limit));
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ error: err.message, code: err.code }, 502);
+      }
+    });
 
     app.get("/api/explore/children", async (c) => {
       const clientId = c.req.query("client") ?? "";
