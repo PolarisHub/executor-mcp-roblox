@@ -521,9 +521,25 @@ local function buildMcpTable(token)
 		return out
 	end
 
+	-- mcp.defer("get-players") (or camelCase) returns a deferred descriptor that
+	-- mcp.parallel/mcp.all recognize and batch as a single round-trip. Lets you
+	-- write the readable, ergonomic form:
+	--   local r = mcp.parallel({
+	--     players = mcp.defer("get-players"),
+	--     remotes = mcp.defer("search-instances", { className = "RemoteEvent" }),
+	--   })
+	local function defer(name, args)
+		if type(name) ~= "string" then
+			error("mcp.defer: tool name must be a string.", 0)
+		end
+		return { __mcpDeferred = true, tool = camelToKebab(name), args = args or {} }
+	end
+
 	return setmetatable({
 		call = function(name, args) return call(name, args) end,
 		all = all,
+		parallel = all, -- ergonomic alias
+		defer = defer,
 	}, {
 		__index = function(_, key)
 			local name = camelToKebab(key)
