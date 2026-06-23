@@ -436,12 +436,31 @@ end
 -- Build the `mcp` table that the script sees. Each call pushes an rpc-call frame
 -- and yields on the matching reply. Errors as Lua errors so `pcall` works.
 local function buildMcpTable(token)
+	-- The active coroutine scheduler when running inside `mcp.parallel({fn, ...})`.
+	-- A nil value means we're in regular sequential script context; a table value
+	-- means call() should yield a marker instead of doing the round-trip itself,
+	-- so the scheduler can batch every concurrent function's calls into one
+	-- rpc-batch frame.
+	local currentScheduler = nil
+
 	local function call(name, args)
-		if currentSend == nil then
-			error("mcp." .. tostring(name) .. ": bridge socket is not connected.", 0)
-		end
 		if name == "script" then
 			error("mcp.script is disabled (no recursion).", 0)
+		end
+		-- If this coroutine is registered with a live scheduler, surrender the
+		-- call to it: yield with a marker, get the result back on resume.
+		if currentScheduler ~= nil then
+			local me = coroutine.running()
+			if me ~= nil and currentScheduler.threadsByCoro[me] then
+				local data, err = coroutine.yield({ tool = name, args = args or {} })
+				if err ~= nil then
+					error("mcp." .. tostring(name) .. " -> " .. tostring(err), 0)
+				end
+				return data
+			end
+		end
+		if currentSend == nil then
+			error("mcp." .. tostring(name) .. ": bridge socket is not connected.", 0)
 		end
 		rpcCounter = rpcCounter + 1
 		local id = "r" .. tostring(rpcCounter)
@@ -540,6 +559,168 @@ local function buildMcpTable(token)
 		return { __mcpDeferred = true, tool = camelToKebab(name), args = args or {} }
 	end
 
+	-- True coroutine-based parallel: when spec entries are functions, each runs
+	-- on its own coroutine; every mcp.* call inside yields a marker; the
+	-- scheduler collects markers across all coroutines per round, sends ONE
+	-- rpc-batch, resumes each coroutine with its result. Repeats until every
+	-- coroutine returns (or errors). Lets you write:
+	--   local r = mcp.parallel({
+	--     players = function() return mcp.getPlayers() end,
+	--     remotes = function() return mcp.searchInstances({ className = "Part" }) end,
+	--   })
+	-- A single function can make MANY mcp.* calls — they all get batched per
+	-- round across every coroutine. Falls back to mcp.all() when no entries are
+	-- functions (preserves the deferred-table form).
+	local function parallel(spec)
+		if type(spec) ~= "table" then
+			error("mcp.parallel: expected a table of calls or functions.", 0)
+		end
+		-- Detect function form.
+		local hasFunction = false
+		for _, v in pairs(spec) do
+			if type(v) == "function" then hasFunction = true; break end
+		end
+		if not hasFunction then
+			return all(spec)
+		end
+
+		-- Normalize entries: each gets a coroutine. Non-function entries become
+		-- trivial functions that call() the named tool, so mixed forms work too.
+		local cos = {}
+		for k, v in pairs(spec) do
+			local fn
+			if type(v) == "function" then
+				fn = v
+			elseif type(v) == "string" then
+				fn = function() return call(v, {}) end
+			elseif type(v) == "table" then
+				local toolName = v.tool or v[1]
+				local args = v.args or v[2] or {}
+				if type(toolName) ~= "string" then
+					error("mcp.parallel entry for " .. tostring(k) .. " has no tool name.", 0)
+				end
+				fn = function() return call(toolName, args) end
+			else
+				error("mcp.parallel entry for " .. tostring(k) .. " must be function/string/table.", 0)
+			end
+			local co = coroutine.create(fn)
+			cos[#cos + 1] = {
+				key = k,
+				co = co,
+				pending = nil, -- marker yielded; nil once resumed
+				done = false,
+				errored = false,
+				result = nil,
+			}
+		end
+
+		-- Set up the scheduler context and remember the previous one so nested
+		-- mcp.parallel calls compose cleanly.
+		local prevScheduler = currentScheduler
+		local thisScheduler = { threadsByCoro = {} }
+		for _, c in ipairs(cos) do thisScheduler.threadsByCoro[c.co] = c end
+		currentScheduler = thisScheduler
+
+		local terminated = false
+		local function setError(c, message)
+			c.done = true; c.errored = true; c.result = message; c.pending = nil
+		end
+
+		local roundSafety = 0
+		while not terminated do
+			roundSafety = roundSafety + 1
+			if roundSafety > 4096 then
+				for _, c in ipairs(cos) do
+					if not c.done then setError(c, "mcp.parallel: round cap exceeded (4096)") end
+				end
+				break
+			end
+			-- Resume every coroutine that's idle (pending == nil and not done).
+			-- A coroutine either dies (done), yields a marker (pending != nil),
+			-- or errors (errored). Collect markers from the yielding ones.
+			local markers = {}
+			for _, c in ipairs(cos) do
+				if not c.done and c.pending == nil then
+					local ok, value = coroutine.resume(c.co)
+					if not ok then
+						setError(c, tostring(value))
+					elseif coroutine.status(c.co) == "dead" then
+						c.done = true; c.result = value
+					else
+						-- yielded a marker
+						if type(value) ~= "table" or type(value.tool) ~= "string" then
+							setError(c, "mcp.parallel: coroutine yielded an unrecognized marker; only mcp.* calls may yield here")
+						else
+							c.pending = value
+							markers[#markers + 1] = c
+						end
+					end
+				end
+			end
+			if #markers == 0 then break end
+
+			-- Dispatch one rpc-batch covering every marker this round.
+			if currentSend == nil then
+				for _, c in ipairs(markers) do setError(c, "mcp.parallel: bridge disconnected mid-scheduler") end
+				break
+			end
+			local calls = {}
+			for i, c in ipairs(markers) do
+				calls[i] = { key = "p" .. i, tool = camelToKebab(c.pending.tool), args = c.pending.args }
+			end
+			rpcCounter = rpcCounter + 1
+			local id = "b" .. tostring(rpcCounter)
+			pendingBatch[id] = { done = false, value = nil }
+			local sendOk, sendErr = pcall(function()
+				currentSend({ type = "rpc-batch", id = id, token = token, calls = calls })
+			end)
+			if not sendOk then
+				pendingBatch[id] = nil
+				for _, c in ipairs(markers) do setError(c, "mcp.parallel: send failed: " .. tostring(sendErr)) end
+				break
+			end
+			local outcome = awaitBatch(id, 60000)
+			if not outcome.ok then
+				for _, c in ipairs(markers) do setError(c, outcome.error or "mcp.parallel: batch failed") end
+				break
+			end
+			-- Resume each yielded coroutine with its individual result.
+			local byKey = {}
+			for _, r in ipairs(outcome.results) do byKey[r.key] = r end
+			for i, c in ipairs(markers) do
+				local r = byKey["p" .. i]
+				local resumeData, resumeErr
+				if r and r.ok then
+					resumeData = r.data
+				else
+					resumeErr = (r and r.error) or "no result"
+				end
+				c.pending = nil
+				local ok2, value2 = coroutine.resume(c.co, resumeData, resumeErr)
+				if not ok2 then
+					setError(c, tostring(value2))
+				elseif coroutine.status(c.co) == "dead" then
+					c.done = true; c.result = value2
+				end
+				-- If still suspended (yielded again), next round's pump catches it.
+			end
+		end
+
+		currentScheduler = prevScheduler
+
+		-- Build keyed result map. Errors come back as { error = "..." }, mirroring
+		-- the mcp.all return shape so callers can treat both forms uniformly.
+		local out = {}
+		for _, c in ipairs(cos) do
+			if c.errored then
+				out[c.key] = { error = c.result }
+			else
+				out[c.key] = c.result
+			end
+		end
+		return out
+	end
+
 	-- Cross-game pub/sub: publish a payload to every OTHER client subscribed to
 	-- the channel. Sender does NOT receive its own message.
 	local function publish(channel, payload)
@@ -591,7 +772,7 @@ local function buildMcpTable(token)
 	return setmetatable({
 		call = function(name, args) return call(name, args) end,
 		all = all,
-		parallel = all, -- ergonomic alias
+		parallel = parallel,
 		defer = defer,
 		publish = publish,
 		subscribe = subscribe,
