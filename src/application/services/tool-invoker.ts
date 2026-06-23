@@ -96,6 +96,13 @@ export class ToolInvoker {
       semantic: this.deps.semantic,
       playbooks: this.deps.playbooks,
       sessionLogger: this.deps.sessionLogger,
+      invokeTool: (name, input) =>
+        this.invoke({
+          toolName: name,
+          input,
+          sessionId: request.sessionId,
+          sessionLabel: request.sessionLabel,
+        }),
       scripting: {
         baseUrl: this.scriptBaseUrl(),
         mint: (opts) =>

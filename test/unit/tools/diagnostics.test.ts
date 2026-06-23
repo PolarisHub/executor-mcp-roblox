@@ -76,17 +76,29 @@ function mockContext(
 }
 
 describe("Diagnostics tools", () => {
-  it("registers all 12 tools in the category index, each tagged Diagnostics and read-only", () => {
+  it("registers all 12 tools in the category index, each tagged Diagnostics", () => {
     expect(diagnosticsTools).toHaveLength(12);
     for (const tool of diagnosticsTools) {
       expect(tool.category).toBe("Diagnostics");
-      expect(tool.mutatesState ?? false).toBe(false);
+    }
+    // Every Diagnostics tool is read-only EXCEPT session-replay, which can
+    // re-issue recorded calls when dryRun:false.
+    for (const tool of diagnosticsTools) {
+      if (tool.name === "session-replay") {
+        expect(tool.mutatesState).toBe(true);
+      } else {
+        expect(tool.mutatesState ?? false).toBe(false);
+      }
     }
     const names = diagnosticsTools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length); // no duplicate names
     expect(names).toContain("bridge-status");
-    // bridge-status is the only client-less tool in the set.
     expect(diagnosticsTools.find((t) => t.name === "bridge-status")?.requiresClient).toBe(false);
+    // Session-management tools are also client-less; they read server-side
+    // state (~/.executor-mcp/sessions/) rather than the game.
+    for (const n of ["session-list", "session-show", "session-replay"]) {
+      expect(diagnosticsTools.find((t) => t.name === n)?.requiresClient).toBe(false);
+    }
   });
 
   describe("test-capabilities", () => {

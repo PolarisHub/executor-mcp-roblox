@@ -76,6 +76,13 @@ export interface ToolContext {
   readonly playbooks: SavedScriptsStore;
   /** Per-session append-only tool-call trace. */
   readonly sessionLogger: SessionLogger;
+  /**
+   * Invoke another tool through the same {@link ToolInvoker} the caller is on.
+   * Used by `session-replay` to actually re-issue a recorded trace. The call
+   * runs under the same session, so its own recorded line is appended (with the
+   * usual seq + scriptToken bookkeeping).
+   */
+  invokeTool(name: string, input: unknown): Promise<ToolResult>;
   /** Tool-calling bridge for the `script` tool (absent for ordinary tools/tests). */
   readonly scripting?: ScriptingContext;
 }
