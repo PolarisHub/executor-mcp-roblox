@@ -9,6 +9,7 @@ import { ClientId } from "../../domain/shared/ids.js";
 import { BriefService } from "./dashboard-brief.js";
 import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
+import { emitMcpLuauTypes } from "./emit-mcp-types.js";
 import { ExplorerService } from "./dashboard-explorer.js";
 import { PlaybookService } from "./dashboard-playbooks.js";
 import { SpyService } from "./dashboard-spy.js";
@@ -84,6 +85,15 @@ export class Dashboard {
       ),
     );
     app.get("/api/class-icons", (c) => c.json(CLASS_ICON_INDEX));
+
+    // Public Luau type declarations for the live mcp.* surface. Operators can
+    // drop this next to their scripts to get Luau LSP autocomplete + hover.
+    app.get("/mcp.d.luau", (c) =>
+      c.body(emitMcpLuauTypes(this.deps.registry), 200, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+      }),
+    );
 
     app.get("/api/output", (c) => {
       const client = c.req.query("client") || undefined;
