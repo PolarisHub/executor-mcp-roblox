@@ -28,15 +28,26 @@ local function __enc(v)
 end
 `;
 
-function childrenLuau(path: string): string {
+function childrenLuau(path: string, offset: number, limit: number): string {
   return `${RESOLVE}
 local pathStr = ${q(path)}
 local inst, err = __resolve(pathStr)
 if err then return { error = err } end
 local kids = inst:GetChildren()
+local total = #kids
+local off = ${offset}
+local lim = ${limit}
+-- Sort first so paging is stable across requests for the same parent.
+local sorted = {}
+for i = 1, total do sorted[i] = kids[i] end
+table.sort(sorted, function(a, b)
+  local ok, ord = pcall(function() return (a.ClassName .. a.Name) < (b.ClassName .. b.Name) end)
+  return ok and ord or false
+end)
 local out = {}
-for i = 1, math.min(#kids, 1000) do
-  local c = kids[i]
+local upto = math.min(total, off + lim)
+for i = off + 1, upto do
+  local c = sorted[i]
   pcall(function()
     local n = c.Name
     local cc = c:GetChildren()
@@ -49,8 +60,17 @@ for i = 1, math.min(#kids, 1000) do
     }
   end)
 end
-table.sort(out, function(a, b) return (a.class .. a.name) < (b.class .. b.name) end)
-return { ok = true, path = pathStr, class = inst.ClassName, name = inst.Name, count = #kids, truncated = #kids > 1000, children = out }`;
+return {
+  ok = true,
+  path = pathStr,
+  class = inst.ClassName,
+  name = inst.Name,
+  totalCount = total,
+  offset = off,
+  returnedCount = #out,
+  hasMore = upto < total,
+  children = out,
+}`;
 }
 
 function propertiesLuau(path: string): string {
@@ -146,8 +166,14 @@ export class ExplorerService {
     return this.gateway.eval(id, { source, threadContext: 8, timeoutMs: 20000 });
   }
 
-  children(clientId: string, path: string): Promise<unknown> {
-    return this.run(clientId, childrenLuau(path || "game"));
+  children(
+    clientId: string,
+    path: string,
+    opts: { offset?: number; limit?: number } = {},
+  ): Promise<unknown> {
+    const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+    const limit = Math.min(2000, Math.max(1, Math.floor(opts.limit ?? 200)));
+    return this.run(clientId, childrenLuau(path || "game", offset, limit));
   }
   properties(clientId: string, path: string): Promise<unknown> {
     return this.run(clientId, propertiesLuau(path || "game"));

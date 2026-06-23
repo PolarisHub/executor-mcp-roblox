@@ -96,7 +96,26 @@ export class Dashboard {
         }
       };
 
-    app.get("/api/explore/children", explore((id, p) => this.explorer.children(id, p)));
+    app.get("/api/explore/children", async (c) => {
+      const clientId = c.req.query("client") ?? "";
+      const path = c.req.query("path") ?? "game";
+      if (!clientId) return c.json({ error: "missing ?client" }, 400);
+      const offsetRaw = c.req.query("offset");
+      const limitRaw = c.req.query("limit");
+      const offset = offsetRaw !== undefined ? Number(offsetRaw) : undefined;
+      const limit = limitRaw !== undefined ? Number(limitRaw) : undefined;
+      try {
+        return c.json(
+          await this.explorer.children(clientId, path, {
+            ...(Number.isFinite(offset) ? { offset: offset! } : {}),
+            ...(Number.isFinite(limit) ? { limit: limit! } : {}),
+          }),
+        );
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ error: err.message, code: err.code }, 502);
+      }
+    });
     app.get("/api/explore/properties", explore((id, p) => this.explorer.properties(id, p)));
     app.get("/api/explore/connections", explore((id, p) => this.explorer.connections(id, p)));
   }

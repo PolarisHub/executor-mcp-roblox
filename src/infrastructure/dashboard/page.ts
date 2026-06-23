@@ -328,6 +328,12 @@ export function renderDashboardPage(): string {
   .tchildren { display: none; }
   .tnode.open > .tchildren { display: block; }
   .tnode-msg { padding: 4px 12px; font-size: 12px; }
+  .tnode-more {
+    padding: 4px 12px; font-size: 12px; color: var(--accent); cursor: pointer;
+    border-top: 1px dashed #232323; user-select: none;
+  }
+  .tnode-more:hover { background: var(--hover); color: var(--text); }
+  .tnode-more.busy { color: var(--faint); cursor: default; }
 
   /* details */
   .exp-details { overflow: auto; max-height: 64vh; }
@@ -817,15 +823,24 @@ export function renderDashboardPage(): string {
   }
 
   // fetch children of a path (cached). cb() re-renders the tree when ready.
+  // Pull the first page on first access; subsequent calls (loadMoreChildren)
+  // append. childCache shape: { children: [...], totalCount, hasMore, error? }.
   function loadChildren(path) {
-    if (exp.childCache[path]) return Promise.resolve(exp.childCache[path]);
+    var cached = exp.childCache[path];
+    if (cached && !cached.loading) return Promise.resolve(cached);
     var clientAtFetch = exp.clientId;
-    return fetch("/api/explore/children?" + expQuery(path))
+    return fetch("/api/explore/children?" + expQuery(path) + "&offset=0&limit=200")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (clientAtFetch !== exp.clientId) return null;
         if (data && data.error) { exp.childCache[path] = { error: data.error }; }
-        else { exp.childCache[path] = { children: (data && data.children) || [], truncated: !!(data && data.truncated) }; }
+        else {
+          exp.childCache[path] = {
+            children: (data && data.children) || [],
+            totalCount: (data && data.totalCount) || 0,
+            hasMore: !!(data && data.hasMore),
+          };
+        }
         if (activeTab === "explorer") renderTree();
         return exp.childCache[path];
       })
@@ -834,6 +849,41 @@ export function renderDashboardPage(): string {
         if (activeTab === "explorer") renderTree();
         return exp.childCache[path];
       });
+  }
+  function loadMoreChildren(path) {
+    var cached = exp.childCache[path];
+    if (!cached || cached.loading || cached.error || !cached.hasMore) return Promise.resolve(cached);
+    cached.loading = true;
+    var offset = cached.children.length;
+    var clientAtFetch = exp.clientId;
+    return fetch("/api/explore/children?" + expQuery(path) + "&offset=" + offset + "&limit=200")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        cached.loading = false;
+        if (clientAtFetch !== exp.clientId) return null;
+        if (data && !data.error) {
+          var more = (data && data.children) || [];
+          cached.children = cached.children.concat(more);
+          cached.hasMore = !!(data && data.hasMore);
+          cached.totalCount = (data && data.totalCount) || cached.totalCount;
+        }
+        if (activeTab === "explorer") renderTree();
+        return cached;
+      })
+      .catch(function () {
+        cached.loading = false;
+        return cached;
+      });
+  }
+  // Debounced background prefetch on hover so the click-to-expand feels instant.
+  var prefetchTimer = null;
+  function schedulePrefetch(path) {
+    if (exp.childCache[path]) return;
+    if (prefetchTimer) clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(function () {
+      prefetchTimer = null;
+      if (!exp.childCache[path]) loadChildren(path);
+    }, 250);
   }
 
   function loadDetails(path, name) {
@@ -903,7 +953,13 @@ export function renderDashboardPage(): string {
       } else {
         var parts = [];
         for (var i = 0; i < cached.children.length; i++) parts.push(treeNodeHtml(cached.children[i], depth + 1));
-        if (cached.truncated) parts.push('<div class="tnode-msg faint">…list truncated</div>');
+        if (cached.hasMore) {
+          var remaining = (cached.totalCount || 0) - cached.children.length;
+          var more = cached.loading ? "Loading more…" : "Load " + Math.min(200, remaining) + " more (" + remaining + " left)";
+          var pad = (depth + 1) * 14 + 12;
+          parts.push('<div class="tnode-more' + (cached.loading ? " busy" : "") + '" data-more="' + esc(path) +
+            '" style="padding-left:' + pad + 'px">' + more + "</div>");
+        }
         childrenHtml = parts.join("");
       }
     }
@@ -1053,22 +1109,39 @@ export function renderDashboardPage(): string {
 
   function wireExplorer() {
     var tree = byId("exp-tree");
-    if (tree) tree.onclick = function (e) {
-      var row = e.target.closest(".trow");
-      if (!row) return;
-      var path = row.getAttribute("data-path");
-      var name = row.getAttribute("data-name");
-      if (e.target.closest('[data-act="toggle"]')) {
-        if (exp.expanded[path]) { delete exp.expanded[path]; }
-        else { exp.expanded[path] = true; if (!exp.childCache[path]) loadChildren(path); }
-        renderTree();
-        return;
-      }
-      // select node -> rebuild breadcrumb from the DOM ancestry path
-      exp.crumb = crumbFor(path, name);
-      var c = byId("exp-crumb"); if (c) c.innerHTML = renderCrumb();
-      loadDetails(path, name);
-    };
+    if (tree) {
+      tree.onclick = function (e) {
+        var more = e.target.closest(".tnode-more");
+        if (more && !more.classList.contains("busy")) {
+          var morePath = more.getAttribute("data-more");
+          if (morePath) loadMoreChildren(morePath);
+          return;
+        }
+        var row = e.target.closest(".trow");
+        if (!row) return;
+        var path = row.getAttribute("data-path");
+        var name = row.getAttribute("data-name");
+        if (e.target.closest('[data-act="toggle"]')) {
+          if (exp.expanded[path]) { delete exp.expanded[path]; }
+          else { exp.expanded[path] = true; if (!exp.childCache[path]) loadChildren(path); }
+          renderTree();
+          return;
+        }
+        exp.crumb = crumbFor(path, name);
+        var c = byId("exp-crumb"); if (c) c.innerHTML = renderCrumb();
+        loadDetails(path, name);
+      };
+      // Debounced prefetch of children when the cursor enters an unexpanded
+      // expandable node — by the time you click, the data is already there.
+      tree.onmouseover = function (e) {
+        var row = e.target.closest(".trow");
+        if (!row) return;
+        var chev = row.querySelector(".chev.has");
+        if (!chev) return;
+        var path = row.getAttribute("data-path");
+        if (path && !exp.expanded[path]) schedulePrefetch(path);
+      };
+    }
 
     var det = byId("exp-det-body");
     if (det) det.onclick = function (e) {
