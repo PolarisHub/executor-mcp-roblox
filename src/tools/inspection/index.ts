@@ -12,6 +12,7 @@ import watchInstanceProperty from "./watch-instance-property.js";
 import listInstanceSignals from "./list-instance-signals.js";
 import traceConnectionFunction from "./trace-connection-function.js";
 import diffInstanceSnapshot from "./diff-instance-snapshot.js";
+import discoverPlayerValues from "./discover-player-values.js";
 
 /** Every tool in the "Inspection" category, in registration order. */
 export const inspectionTools: Tool[] = [
@@ -27,4 +28,5 @@ export const inspectionTools: Tool[] = [
   listInstanceSignals,
   traceConnectionFunction,
   diffInstanceSnapshot,
+  discoverPlayerValues,
 ];

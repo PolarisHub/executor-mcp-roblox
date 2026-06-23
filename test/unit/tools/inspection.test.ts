@@ -54,8 +54,8 @@ function mockContext(returnValue: unknown = { ok: true }): ToolContext & {
 }
 
 describe("Inspection tools", () => {
-  it("registers all 12 tools in the category index, each tagged correctly", () => {
-    expect(inspectionTools).toHaveLength(12);
+  it("registers all 13 tools in the category index, each tagged correctly", () => {
+    expect(inspectionTools).toHaveLength(13);
     for (const tool of inspectionTools) {
       expect(tool.category).toBe("Inspection");
       // Every Inspection tool is read-only — watch-instance-property is a blocking
