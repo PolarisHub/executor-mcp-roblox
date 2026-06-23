@@ -398,6 +398,31 @@ local function awaitRpc(id, timeoutMs)
 	return pending.value
 end
 
+local pendingBatch = {}
+
+-- Block until the server returns an rpc-batch-result, or timeout. Same nil-guard
+-- pattern as awaitRpc for the disconnect race.
+local function awaitBatch(id, timeoutMs)
+	local deadline = os.clock() + (timeoutMs or 60000) / 1000
+	while os.clock() < deadline do
+		local pending = pendingBatch[id]
+		if pending == nil then
+			return { ok = false, error = "bridge disconnected mid-batch" }
+		end
+		if pending.done then break end
+		task.wait(0.01)
+	end
+	local pending = pendingBatch[id]
+	if pending == nil then
+		return { ok = false, error = "bridge disconnected mid-batch" }
+	end
+	pendingBatch[id] = nil
+	if not pending.done then
+		return { ok = false, error = string.format("mcp.all timed out after %dms", timeoutMs or 60000) }
+	end
+	return { ok = true, results = pending.value or {} }
+end
+
 -- Build the `mcp` table that the script sees. Each call pushes an rpc-call frame
 -- and yields on the matching reply. Errors as Lua errors so `pcall` works.
 local function buildMcpTable(token)
@@ -425,8 +450,75 @@ local function buildMcpTable(token)
 		return result.data
 	end
 
+	-- Run N tool calls in parallel. Pass a table of either:
+	--   { key1 = "tool-name",                     key2 = { "tool-name", args } }
+	--   { key1 = { tool = "tool-name", args = {} } }
+	--   { [1] = "tool-name", [2] = { "tool-name", args } }   -- numeric keys ok
+	-- Returns a table keyed identically with either the tool's data on success
+	-- or { error = "..." } on failure, so the caller never needs pcall per-entry.
+	local function all(spec)
+		if type(spec) ~= "table" then
+			error("mcp.all: expected a table of calls, got " .. type(spec), 0)
+		end
+		if currentSend == nil then
+			error("mcp.all: bridge socket is not connected.", 0)
+		end
+		local calls = {}
+		local keyOrder = {}
+		for k, entry in pairs(spec) do
+			local toolName, args
+			if type(entry) == "string" then
+				toolName = entry
+				args = {}
+			elseif type(entry) == "table" then
+				toolName = entry.tool or entry[1]
+				args = entry.args or entry[2] or {}
+			else
+				error("mcp.all entry for " .. tostring(k) .. " must be a string or table.", 0)
+			end
+			if type(toolName) ~= "string" then
+				error("mcp.all entry for " .. tostring(k) .. " is missing a tool name.", 0)
+			end
+			local keyStr = tostring(k)
+			keyOrder[#keyOrder + 1] = { key = keyStr, original = k }
+			calls[#calls + 1] = { key = keyStr, tool = camelToKebab(toolName), args = args }
+		end
+		if #calls == 0 then return {} end
+
+		rpcCounter = rpcCounter + 1
+		local id = "b" .. tostring(rpcCounter)
+		pendingBatch[id] = { done = false, value = nil }
+		local ok, sendErr = pcall(function()
+			currentSend({ type = "rpc-batch", id = id, token = token, calls = calls })
+		end)
+		if not ok then
+			pendingBatch[id] = nil
+			error("mcp.all: send failed: " .. tostring(sendErr), 0)
+		end
+		local outcome = awaitBatch(id, 60000)
+		if not outcome.ok then
+			error("mcp.all -> " .. tostring(outcome.error), 0)
+		end
+		-- Map the array of results back onto the user's keys (string OR number).
+		local byKey = {}
+		for _, r in ipairs(outcome.results) do byKey[r.key] = r end
+		local out = {}
+		for _, ko in ipairs(keyOrder) do
+			local r = byKey[ko.key]
+			if r == nil then
+				out[ko.original] = { error = "no result for key " .. ko.key }
+			elseif r.ok then
+				out[ko.original] = r.data
+			else
+				out[ko.original] = { error = r.error }
+			end
+		end
+		return out
+	end
+
 	return setmetatable({
 		call = function(name, args) return call(name, args) end,
+		all = all,
 	}, {
 		__index = function(_, key)
 			local name = camelToKebab(key)
@@ -727,6 +819,14 @@ local function runConnection()
 				pending.done = true
 			end
 			return
+		elseif mtype == "rpc-batch-result" then
+			-- A script's mcp.all() is awaiting this batch; resolve it.
+			local pending = pendingBatch[message.id]
+			if pending ~= nil then
+				pending.value = message.results
+				pending.done = true
+			end
+			return
 		end
 		-- Unknown message types are ignored (forward-compatible).
 	end
@@ -821,6 +921,11 @@ local function runConnection()
 	-- Reject any RPC calls left in flight so awaiting scripts unblock instead of hanging.
 	currentSend = nil
 	pushOutput = nil
+	-- Wake any mcp.all() awaiters with a clean disconnected outcome.
+	for _, pending in pairs(pendingBatch) do
+		pending.value = pending.value or {}
+		pending.done = true
+	end
 	for id, pending in pairs(pendingRpc) do
 		pending.value = { ok = false, error = "bridge disconnected" }
 		pending.done = true

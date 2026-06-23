@@ -65,6 +65,14 @@ export type RpcResult =
   | { readonly ok: true; readonly data: unknown }
   | { readonly ok: false; readonly error: string; readonly code?: string };
 
+/** One call inside an `rpc-batch` frame; results come back keyed by `key`. */
+export interface RpcBatchCall {
+  readonly key: string;
+  readonly tool: string;
+  readonly args: unknown;
+}
+export type RpcBatchResultEntry = RpcResult & { readonly key: string };
+
 /** Server -> connector. */
 export type ServerMessage =
   | {
@@ -74,7 +82,8 @@ export type ServerMessage =
     }
   | { readonly type: "op"; readonly id: string; readonly op: ClientOp }
   | { readonly type: "ping"; readonly id: string }
-  | { readonly type: "rpc-result"; readonly id: string; readonly result: RpcResult };
+  | { readonly type: "rpc-result"; readonly id: string; readonly result: RpcResult }
+  | { readonly type: "rpc-batch-result"; readonly id: string; readonly results: readonly RpcBatchResultEntry[] };
 
 /** Connector -> server. */
 export type ClientMessage =
@@ -89,4 +98,11 @@ export type ClientMessage =
       readonly token: string;
       readonly tool: string;
       readonly args: unknown;
+    }
+  | {
+      /** A running script invoked `mcp.all({...})`. Each call runs in parallel; one `rpc-batch-result` returns. */
+      readonly type: "rpc-batch";
+      readonly id: string;
+      readonly token: string;
+      readonly calls: readonly RpcBatchCall[];
     };

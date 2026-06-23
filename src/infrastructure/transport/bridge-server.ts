@@ -543,6 +543,10 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
         void this.handleRpcCall(connection, message);
         return;
       }
+      case "rpc-batch": {
+        void this.handleRpcBatch(connection, message);
+        return;
+      }
       default: {
         const exhaustive: never = message;
         void exhaustive;
@@ -571,6 +575,50 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     }
     const result = await bridge.run(msg.token, msg.tool, msg.args);
     this.sendRpcResult(connection, msg.id, result);
+  }
+
+  /**
+   * Parallel sibling of `handleRpcCall`. A script's `mcp.all({...})` arrives as
+   * one `rpc-batch` frame; we run every entry concurrently through ScriptBridge
+   * (each entry counts against the per-script budget) and reply with a single
+   * `rpc-batch-result`. One frame in, one frame out — no per-call latency stacking.
+   */
+  private async handleRpcBatch(
+    connection: Connection,
+    msg: {
+      id: string;
+      token: string;
+      calls: readonly { key: string; tool: string; args: unknown }[];
+    },
+  ): Promise<void> {
+    const bridge = this.scriptBridge;
+    const results = bridge
+      ? await Promise.all(
+          msg.calls.map(async (call) => {
+            const r = await bridge.run(msg.token, call.tool, call.args);
+            return r.ok
+              ? { key: call.key, ok: true as const, data: r.data }
+              : {
+                  key: call.key,
+                  ok: false as const,
+                  error: r.error,
+                  ...(r.code ? { code: r.code } : {}),
+                };
+          }),
+        )
+      : msg.calls.map((call) => ({
+          key: call.key,
+          ok: false as const,
+          error: "scripting bridge not attached",
+        }));
+    try {
+      this.send(connection, { type: "rpc-batch-result", id: msg.id, results });
+    } catch (error) {
+      this.logger.warn(
+        { err: toDomainError(error).toJSON(), clientId: connection.id, rpcId: msg.id },
+        "failed to send rpc-batch-result",
+      );
+    }
   }
 
   private sendRpcResult(

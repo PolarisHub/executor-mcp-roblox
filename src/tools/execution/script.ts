@@ -23,7 +23,9 @@ export default defineTool({
     "`game`, `workspace`, and all in-game globals are available, PLUS `mcp.<tool>(args)` invokes any of this " +
     "server's tools and RETURNS its data. Tool names are camelCase of the tool id (e.g. `mcp.getPlayers()`, " +
     "`mcp.searchInstances({ className = 'RemoteEvent' })`, `mcp.findFunctionsByName({ name = 'buy' })`), or use " +
-    "`mcp.call('kebab-tool-name', { ... })`. `print`/`warn` are captured and returned as `output` (and still " +
+    "`mcp.call('kebab-tool-name', { ... })`. For N independent calls use `mcp.all({ players = { 'get-players' }, " +
+    "remotes = { 'search-instances', { className = 'RemoteEvent' } } })` — runs them all in parallel server-side " +
+    "with a single round-trip and returns a table keyed identically. `print`/`warn` are captured and returned as `output` (and still " +
     "stream to the dashboard Output console). By default the script runs in a PERSISTENT VM: globals and " +
     "functions you define survive across `script` calls (a REPL-like session) — set persistent:false for a " +
     "clean one-shot, or call `vm-reset` to wipe the VM. Returns `{ result = <return value>, output = [lines] }` " +

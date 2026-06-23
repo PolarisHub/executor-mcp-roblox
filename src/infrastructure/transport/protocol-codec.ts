@@ -6,6 +6,8 @@ import type {
   ClientMessage,
   ClientOp,
   OpResult,
+  RpcBatchCall,
+  RpcBatchResultEntry,
   RpcResult,
   ServerMessage,
 } from "../../domain/protocol/messages.js";
@@ -53,6 +55,22 @@ const rpcResultSchema = z.union([
   z.object({ ok: z.literal(false), error: z.string(), code: z.string().optional() }),
 ]) satisfies z.ZodType<RpcResult>;
 
+const rpcBatchCallSchema = z.object({
+  key: z.string(),
+  tool: z.string(),
+  args: z.unknown(),
+}) satisfies z.ZodType<RpcBatchCall>;
+
+const rpcBatchResultEntrySchema = z.union([
+  z.object({ key: z.string(), ok: z.literal(true), data: z.unknown() }),
+  z.object({
+    key: z.string(),
+    ok: z.literal(false),
+    error: z.string(),
+    code: z.string().optional(),
+  }),
+]) satisfies z.ZodType<RpcBatchResultEntry>;
+
 const serverMessageSchema = z.union([
   z.object({
     type: z.literal("welcome"),
@@ -62,6 +80,11 @@ const serverMessageSchema = z.union([
   z.object({ type: z.literal("op"), id: z.string(), op: clientOpSchema }),
   z.object({ type: z.literal("ping"), id: z.string() }),
   z.object({ type: z.literal("rpc-result"), id: z.string(), result: rpcResultSchema }),
+  z.object({
+    type: z.literal("rpc-batch-result"),
+    id: z.string(),
+    results: z.array(rpcBatchResultEntrySchema).readonly(),
+  }),
 ]) satisfies z.ZodType<ServerMessage>;
 
 const clientMessageSchema = z.union([
@@ -79,6 +102,12 @@ const clientMessageSchema = z.union([
     token: z.string(),
     tool: z.string(),
     args: z.unknown(),
+  }),
+  z.object({
+    type: z.literal("rpc-batch"),
+    id: z.string(),
+    token: z.string(),
+    calls: z.array(rpcBatchCallSchema).readonly(),
   }),
 ]) satisfies z.ZodType<ClientMessage>;
 
