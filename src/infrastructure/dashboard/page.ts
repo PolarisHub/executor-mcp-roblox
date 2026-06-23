@@ -656,6 +656,7 @@ export function renderDashboardPage(): string {
       <span class="muted" id="repl-client">No client selected</span>
       <span class="count" id="repl-hint" style="margin-left:auto">type <kbd>mcp.</kbd> for autocomplete · <kbd>Ctrl+Enter</kbd> to run</span>
       <button class="out-btn primary" id="repl-run">Run on selected client</button>
+      <button class="out-btn" id="repl-save" title="Save the current source as a playbook">Save…</button>
       <button class="out-btn" id="repl-clear">Clear</button>
     </div>
     <div class="repl-editor-wrap">
@@ -1607,6 +1608,18 @@ return p"></textarea>
       replAcInsert(replState.acItems[idx]);
     };
     runBtn.onclick = function () { replRun(); };
+    var saveBtn = byId("repl-save");
+    if (saveBtn) saveBtn.onclick = function () {
+      var src = ta.value;
+      if (!src.trim()) return;
+      pbState.creating = true;
+      pbState.current = null;
+      pbState.selected = null;
+      pbState.runResult = null;
+      pbState.runErr = null;
+      pbState.prefillSource = src;
+      switchTab("playbooks");
+    };
     if (clearBtn) clearBtn.onclick = function () {
       ta.value = ""; replState.last = null; replState.lastErr = null; renderReplResult(); ta.focus();
     };
@@ -1671,7 +1684,10 @@ return p"></textarea>
       return;
     }
     if (pbState.creating) {
-      pane.innerHTML = renderPbForm({ name: "", source: "", description: "", tags: [], params: [] }, true);
+      var prefill = pbState.prefillSource || "";
+      pbState.prefillSource = null;
+      var blank = { name: "", source: prefill, description: "", tags: [], params: pbExtractParams(prefill) };
+      pane.innerHTML = renderPbForm(blank, true);
       pbWirePane();
       return;
     }
