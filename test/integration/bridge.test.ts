@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { BridgeServer } from "../../src/infrastructure/transport/bridge-server.js";
 import { ClientNotFoundError } from "../../src/domain/errors/errors.js";
+import { ScriptBridge } from "../../src/application/services/script-bridge.js";
+import type { ToolInvoker } from "../../src/application/services/tool-invoker.js";
 import type { AppConfig } from "../../src/application/ports/config.js";
 import type {
   ClientHandshake,
@@ -239,5 +241,150 @@ describe("BridgeServer (integration)", () => {
     ws.send(helloMessage({ token: "secret-x" }));
     await waitForType(ws, "welcome");
     await waitFor(() => bridge.list().length === 1);
+  });
+
+  /** Test helper: wire the bridge to a ScriptBridge backed by a fake invoker
+   *  that returns a recorded result per tool name. Returns the bridge + the
+   *  ScriptBridge so the test can mint tokens. */
+  async function startServerWithScripting(tools: Record<string, unknown>): Promise<{
+    bridge: BridgeServer;
+    port: number;
+    scriptBridge: ScriptBridge;
+  }> {
+    const { bridge, port } = await startServer();
+    const scriptBridge = new ScriptBridge();
+    scriptBridge.attach({
+      invoke: async (req: { toolName: string }) => {
+        if (!(req.toolName in tools)) {
+          throw new Error(`fake invoker: no tool "${req.toolName}"`);
+        }
+        return { data: tools[req.toolName] };
+      },
+    } as unknown as ToolInvoker);
+    bridge.attachScripting(scriptBridge);
+    return { bridge, port, scriptBridge };
+  }
+
+  it("routes a script's rpc-call through ScriptBridge and replies rpc-result", async () => {
+    const { bridge, port, scriptBridge } = await startServerWithScripting({
+      "get-players": { players: ["alice", "bob"], count: 2 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+
+    const { token, dispose } = scriptBridge.mint(SessionId("s1"), "test");
+
+    // Simulate the connector calling mcp.getPlayers() inside a running script.
+    ws.send(
+      JSON.stringify({
+        type: "rpc-call",
+        id: "r1",
+        token,
+        tool: "get-players",
+        args: {},
+      } satisfies ClientMessage),
+    );
+    const result = await waitForType(ws, "rpc-result");
+    expect(result.id).toBe("r1");
+    expect(result.result.ok).toBe(true);
+    if (result.result.ok) {
+      expect(result.result.data).toEqual({ players: ["alice", "bob"], count: 2 });
+    }
+    dispose();
+  });
+
+  it("rejects rpc-call with a bad token", async () => {
+    const { bridge, port } = await startServerWithScripting({ "x": 1 });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    ws.send(
+      JSON.stringify({
+        type: "rpc-call",
+        id: "r2",
+        token: "wrong-token",
+        tool: "x",
+        args: {},
+      } satisfies ClientMessage),
+    );
+    const result = await waitForType(ws, "rpc-result");
+    expect(result.result.ok).toBe(false);
+  });
+
+  it("routes rpc-batch to one rpc-batch-result preserving key order", async () => {
+    const { port, scriptBridge } = await startServerWithScripting({
+      "tool-a": { from: "a" },
+      "tool-b": { from: "b" },
+      "tool-c": { from: "c" },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    const { token, dispose } = scriptBridge.mint(SessionId("s1"), "test");
+
+    ws.send(
+      JSON.stringify({
+        type: "rpc-batch",
+        id: "b1",
+        token,
+        calls: [
+          { key: "p1", tool: "tool-a", args: {} },
+          { key: "p2", tool: "tool-b", args: {} },
+          { key: "p3", tool: "tool-c", args: {} },
+        ],
+      } satisfies ClientMessage),
+    );
+    const batch = await waitForType(ws, "rpc-batch-result");
+    expect(batch.id).toBe("b1");
+    expect(batch.results.map((r) => r.key)).toEqual(["p1", "p2", "p3"]);
+    expect(batch.results.every((r) => r.ok)).toBe(true);
+    dispose();
+  });
+
+  it("routes pubsub-publish to every subscriber except sender", async () => {
+    const { port } = await startServer();
+    const publisher = await openSocket(port);
+    const sub1 = await openSocket(port);
+    const sub2 = await openSocket(port);
+    sockets.push(publisher, sub1, sub2);
+
+    publisher.send(helloMessage({ clientId: "pub" }));
+    sub1.send(helloMessage({ clientId: "s1" }));
+    sub2.send(helloMessage({ clientId: "s2" }));
+    await Promise.all([
+      waitForType(publisher, "welcome"),
+      waitForType(sub1, "welcome"),
+      waitForType(sub2, "welcome"),
+    ]);
+
+    sub1.send(JSON.stringify({ type: "pubsub-subscribe", channel: "feed" }));
+    sub2.send(JSON.stringify({ type: "pubsub-subscribe", channel: "feed" }));
+    // tiny gap so the server registers both subs before the publish
+    await new Promise((r) => setTimeout(r, 30));
+
+    const recv1 = waitForType(sub1, "pubsub-message");
+    const recv2 = waitForType(sub2, "pubsub-message");
+    publisher.send(
+      JSON.stringify({ type: "pubsub-publish", channel: "feed", payload: { ping: 1 } }),
+    );
+
+    const [m1, m2] = await Promise.all([recv1, recv2]);
+    expect(m1.frame.channel).toBe("feed");
+    expect(m1.frame.payload).toEqual({ ping: 1 });
+    expect(m2.frame.payload).toEqual({ ping: 1 });
+    // The publisher itself should NOT receive its own message.
+    let publisherGotEcho = false;
+    publisher.on("message", (raw) => {
+      const m = JSON.parse(raw.toString()) as ServerMessage;
+      if (m.type === "pubsub-message") publisherGotEcho = true;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(publisherGotEcho).toBe(false);
   });
 });
