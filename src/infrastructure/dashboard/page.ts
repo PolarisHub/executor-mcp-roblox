@@ -1588,7 +1588,8 @@ return p"></textarea>
     }).join("");
     // Anchor near the cursor: approximate using textarea metrics.
     var rect = ta.getBoundingClientRect();
-    var lines = head.split("\n");
+    var NL = String.fromCharCode(10);
+    var lines = head.split(NL);
     var lineH = parseFloat(getComputedStyle(ta).lineHeight) || 20;
     var top = (lines.length) * lineH + 12;
     var left = Math.min(rect.width - 240, (lines[lines.length - 1].length * 7.4) + 14);
@@ -1698,7 +1699,14 @@ return p"></textarea>
     };
     var seen = {};
     var quoteChars = String.fromCharCode(34) + String.fromCharCode(39);
-    var quoteRe = new RegExp("([" + quoteChars + "])((?:\\\\.|(?!\\1).)*?)\\1", "g");
+    // Build the regex by concatenating with a runtime backslash so neither the
+    // TS template literal nor the JS string literal parser ever sees a literal
+    // backslash-1 sequence (TS would flag it as an octal escape and bail).
+    var BS = String.fromCharCode(92);
+    var quoteRe = new RegExp(
+      "([" + quoteChars + "])((?:" + BS + BS + ".|(?!" + BS + "1).)*?)" + BS + "1",
+      "g",
+    );
     var m;
     while ((m = quoteRe.exec(source)) !== null) {
       var lit = m[2];
@@ -2124,7 +2132,7 @@ return p"></textarea>
         '<td><span class="spath">' + esc(String(e.remote || "—")) + "</span></td>" +
         '<td><span class="sargs" title="' + esc(spyArgsPreview(e.args)) + '">' + esc(spyArgsPreview(e.args)) + "</span></td>" +
         '<td class="num muted">' + (e.argCount || 0) + (e.argsTruncated ? "+" : "") + "</td>" +
-        '<td style="text-align:right"><button class="scopy" data-copy="' + esc(snippet) + '" title="Copy as mcp.fireRemote">copy</button></td>" +
+        '<td style="text-align:right"><button class="scopy" data-copy="' + esc(snippet) + '" title="Copy as mcp.fireRemote">copy</button></td>' +
         "</tr>";
     }).filter(Boolean).join("");
     byId("spy-count").textContent = (logs.length || 0) + " shown / " + (d.count || 0) + " buffered" + (d.truncated ? " (truncated)" : "");
@@ -2279,7 +2287,7 @@ return p"></textarea>
         "end",
         "",
         "return result.summary",
-      ].join("\n");
+      ].join(String.fromCharCode(10));
       // Stash on REPL state and switch.
       var ta = byId("repl-src");
       if (ta) ta.value = prefill;
