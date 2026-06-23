@@ -31,6 +31,8 @@ export interface ScriptingContext {
   readonly baseUrl: string;
   /** Mint a one-shot token for the bridge; dispose when done. */
   mint(opts?: { budget?: number }): { token: string; dispose: () => void };
+  /** Read-only view of the tool catalog, for the script tool's preflight check. */
+  readonly knownTools: readonly string[];
 }
 
 /** Per-call session controls handed to session-management tools. */

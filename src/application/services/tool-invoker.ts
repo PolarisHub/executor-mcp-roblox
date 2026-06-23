@@ -97,6 +97,7 @@ export class ToolInvoker {
             client?.id,
             opts?.budget,
           ),
+        knownTools: this.deps.registry.list().map((t) => t.name),
       },
       runLuau: (source, options) => {
         if (!client) {

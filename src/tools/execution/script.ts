@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
+import { preflightScript } from "../../application/services/script-preflight.js";
 
 /**
  * Runs a Luau program in the active client with a built-in `mcp` table that can
@@ -68,6 +69,33 @@ export default defineTool({
         isError: true,
       };
     }
+
+    // Pre-flight: a static scan finds typo'd mcp.<tool> names BEFORE we pay for
+    // the bridge round-trip. The script would fail with a less helpful error at
+    // runtime; here we suggest near-misses and refuse to run.
+    const preflight = preflightScript(source, ctx.scripting.knownTools);
+    if (preflight.errors.length > 0) {
+      return {
+        data: {
+          error:
+            "preflight: " +
+            preflight.errors.length +
+            " unknown mcp.* tool" +
+            (preflight.errors.length === 1 ? "" : "s") +
+            " detected — fix the names and retry.",
+          unknownTools: preflight.errors.map((f) => ({
+            name: f.name,
+            writtenAs: f.written,
+            occurrences: f.occurrences,
+            didYouMean: f.suggestions,
+          })),
+          callsScanned: preflight.callCount,
+          hint: "Tool names are kebab-case on the wire; mcp.getPlayers() resolves to get-players. Use list-tools or suggest-tools to discover names.",
+        },
+        isError: true,
+      };
+    }
+
     const { token, dispose } = ctx.scripting.mint(
       rpcBudget !== undefined ? { budget: rpcBudget } : undefined,
     );
