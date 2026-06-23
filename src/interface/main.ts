@@ -27,6 +27,7 @@ import { createLogger } from "../infrastructure/observability/pino-logger.js";
 import { createMetrics } from "../infrastructure/observability/metrics.js";
 import { systemClock } from "../infrastructure/observability/system-clock.js";
 import { InMemorySessionStore } from "../infrastructure/persistence/in-memory-session-store.js";
+import { CachedEmbeddingsProvider } from "../infrastructure/semantic/cached-embeddings-provider.js";
 import { HttpEmbeddingsProvider } from "../infrastructure/semantic/http-embeddings-provider.js";
 import { InMemorySemanticIndex } from "../infrastructure/semantic/in-memory-semantic-index.js";
 import { FsSavedScriptsStore } from "../infrastructure/playbooks/fs-saved-scripts.js";
@@ -87,8 +88,11 @@ function compose(): Application {
       ...config.execution.scriptDirs,
     ]),
   };
+  // Wrap the configured embeddings provider with an on-disk sha256-keyed cache
+  // (~/.executor-mcp/embeddings.json) so a place's script bodies only have to
+  // be embedded once across server restarts.
   const semantic = new InMemorySemanticIndex({
-    embeddings: new HttpEmbeddingsProvider(config.semantic),
+    embeddings: new CachedEmbeddingsProvider(new HttpEmbeddingsProvider(config.semantic)),
   });
 
   const sessions = new SessionManager(sessionStore, bridge);
