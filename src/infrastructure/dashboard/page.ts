@@ -933,17 +933,59 @@ return p"></textarea>
   }
 
   // ---- activity ----
+  var actFilter = { q: "", category: "", outcome: "" };
+  function actCategories() {
+    var seen = {}, out = [];
+    for (var i = 0; i < liveActivity.length; i++) {
+      var c = liveActivity[i].category;
+      if (c && !seen[c]) { seen[c] = true; out.push(c); }
+    }
+    out.sort();
+    return out;
+  }
+  function actMatch(r) {
+    if (actFilter.category && r.category !== actFilter.category) return false;
+    if (actFilter.outcome === "error" && r.outcome !== "error") return false;
+    if (actFilter.outcome === "ok" && r.outcome !== "ok") return false;
+    if (actFilter.q) {
+      var hay = (r.toolName + " " + (r.errorCode || "") + " " + (r.clientName || "")).toLowerCase();
+      if (hay.indexOf(actFilter.q) === -1) return false;
+    }
+    return true;
+  }
   function renderActivity() {
     var el = byId("panel-activity");
     if (!liveActivity.length && !state) { el.innerHTML = ""; return; }
-    // Newest-first, capped to 80 rows on screen.
-    var a = liveActivity.slice().sort(function (x, y) { return y.at - x.at; }).slice(0, 80);
-    if (!a.length) {
-      el.innerHTML = '<div class="table-wrap"><div class="empty"><div class="h">No activity yet</div>' +
+    var sorted = liveActivity.slice().sort(function (x, y) { return y.at - x.at; });
+    var filtered = sorted.filter(actMatch).slice(0, 80);
+    var cats = actCategories();
+    var catOpts = '<option value="">All categories</option>' + cats.map(function (c) {
+      return '<option value="' + esc(c) + '"' + (actFilter.category === c ? " selected" : "") + '>' + esc(c) + "</option>";
+    }).join("");
+    var outcomeOpts =
+      '<option value=""' + (actFilter.outcome === "" ? " selected" : "") + '>All outcomes</option>' +
+      '<option value="ok"' + (actFilter.outcome === "ok" ? " selected" : "") + '>ok</option>' +
+      '<option value="error"' + (actFilter.outcome === "error" ? " selected" : "") + '>error</option>';
+    var bar =
+      '<div class="out-bar" style="margin-bottom:10px">' +
+        '<input class="search" id="act-q" type="text" placeholder="Filter by tool / client / error code…" autocomplete="off" value="' + esc(actFilter.q) + '" />' +
+        '<select class="out-btn" id="act-cat">' + catOpts + "</select>" +
+        '<select class="out-btn" id="act-out">' + outcomeOpts + "</select>" +
+        '<span class="count">' + filtered.length + " / " + sorted.length + " shown</span>" +
+      "</div>";
+    if (!sorted.length) {
+      el.innerHTML = bar + '<div class="table-wrap"><div class="empty"><div class="h">No activity yet</div>' +
         '<div class="s">Tool calls will appear here as they happen.</div></div></div>';
+      wireActFilter();
       return;
     }
-    var rows = a.map(function (r) {
+    if (!filtered.length) {
+      el.innerHTML = bar + '<div class="table-wrap"><div class="empty"><div class="h">No matches</div>' +
+        '<div class="s">Clear filters to see activity.</div></div></div>';
+      wireActFilter();
+      return;
+    }
+    var rows = filtered.map(function (r) {
       var res = r.outcome === "ok"
         ? '<span class="res ok"><i></i>ok</span>'
         : '<span class="res error"><i></i>' + esc(r.errorCode || "error") + "</span>";
@@ -954,8 +996,18 @@ return p"></textarea>
         '<td class="num muted">' + r.durationMs + " ms</td>" +
         '<td class="muted">' + esc(r.clientName || "—") + "</td></tr>";
     });
-    el.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Time</th><th>Tool</th><th>Category</th>' +
+    el.innerHTML = bar +
+      '<div class="table-wrap"><table><thead><tr><th>Time</th><th>Tool</th><th>Category</th>' +
       "<th>Result</th><th>Duration</th><th>Client</th></tr></thead><tbody>" + rows.join("") + "</tbody></table></div>";
+    wireActFilter();
+  }
+  function wireActFilter() {
+    var q = byId("act-q");
+    if (q) q.oninput = function (e) { actFilter.q = e.target.value.toLowerCase(); renderActivity(); var nq = byId("act-q"); if (nq) { nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); } };
+    var cat = byId("act-cat");
+    if (cat) cat.onchange = function (e) { actFilter.category = e.target.value; renderActivity(); };
+    var out = byId("act-out");
+    if (out) out.onchange = function (e) { actFilter.outcome = e.target.value; renderActivity(); };
   }
 
   // ---- tools ----
