@@ -37,7 +37,7 @@ function testConfig(): AppConfig {
     logging: { level: "info", pretty: false },
     execution: { defaultTimeoutMs: 5000, defaultThreadContext: 8, scriptDirs: [] },
     semantic: { embeddingsUrl: null, embeddingsModel: "test" },
-    bridge: { heartbeatIntervalMs: 15000 },
+    bridge: { heartbeatIntervalMs: 15000, authToken: null },
     dashboard: { enabled: false },
   };
 }

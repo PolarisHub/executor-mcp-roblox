@@ -33,6 +33,10 @@ end
 --==============================================================================--
 
 local BridgeURL = getgenv().BridgeURL or "localhost:16384"
+-- Optional shared secret. When the server is started with
+-- ROBLOX_MCP_BRIDGE_TOKEN set, the connector must send this exact string or the
+-- bridge closes the socket. Leave nil/empty when the server runs unauthenticated.
+local BridgeToken = getgenv().BridgeToken
 local PROTOCOL_VERSION = 1
 
 -- Reconnect backoff bounds (seconds).
@@ -208,6 +212,9 @@ local function buildHandshake(clientId)
 		jobId = jobId,
 		executor = detectExecutor(),
 		capabilities = probeCapabilities(),
+		-- nil when the operator didn't set getgenv().BridgeToken; server's behavior
+		-- depends on whether it was started with a matching ROBLOX_MCP_BRIDGE_TOKEN.
+		token = (typeof(BridgeToken) == "string" and BridgeToken ~= "") and BridgeToken or nil,
 	}
 end
 

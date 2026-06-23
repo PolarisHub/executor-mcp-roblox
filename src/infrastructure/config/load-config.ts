@@ -158,6 +158,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv): AppConfig {
     .filter((entry) => entry.length > 0);
   const embeddingsUrl = env["ROBLOX_MCP_EMBEDDINGS_URL"]?.trim() || null;
   const embeddingsModel = env["ROBLOX_MCP_EMBEDDINGS_MODEL"]?.trim() || DEFAULTS.embeddingsModel;
+  const authToken = env["ROBLOX_MCP_BRIDGE_TOKEN"]?.trim() || null;
 
   return {
     server: {
@@ -183,6 +184,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv): AppConfig {
     },
     bridge: {
       heartbeatIntervalMs: DEFAULTS.heartbeatIntervalMs,
+      authToken,
     },
     dashboard: {
       enabled: value.dashboardEnabled,

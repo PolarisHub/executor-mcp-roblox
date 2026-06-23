@@ -159,6 +159,13 @@ function compose(): Application {
     async start() {
       await bridge.start();
       await mcp.connectStdio();
+      if (!config.bridge.authToken) {
+        logger.warn(
+          "bridge running WITHOUT an auth token — any local process can drive the game. " +
+            "Set ROBLOX_MCP_BRIDGE_TOKEN to a random string and pass `getgenv().BridgeToken` " +
+            "in the loader to require a matching token on every connect.",
+        );
+      }
       logger.info(
         {
           version: APP_VERSION,
@@ -166,6 +173,7 @@ function compose(): Application {
           port: config.server.port,
           tools: registry.size,
           label: config.session.label,
+          auth: config.bridge.authToken ? "token" : "open",
         },
         "executor-mcp-roblox ready",
       );

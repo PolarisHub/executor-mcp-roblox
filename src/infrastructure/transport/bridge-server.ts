@@ -356,6 +356,24 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
         return;
       }
 
+      const expected = this.config.bridge.authToken;
+      if (expected) {
+        const provided = message.client.token ?? null;
+        if (provided !== expected) {
+          this.logger.warn(
+            { hasToken: provided !== null, executor: message.client.executor },
+            "bridge auth token mismatch; closing connection",
+          );
+          this.metrics.increment("bridge.auth.rejected");
+          try {
+            socket.close(1008, "bad bridge token");
+          } catch {
+            // socket may already be torn down; nothing actionable.
+          }
+          return;
+        }
+      }
+
       clearTimeout(handshakeDeadline);
       registered = this.registerConnection(socket, message.protocolVersion, message.client);
     });

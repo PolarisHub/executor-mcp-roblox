@@ -35,6 +35,12 @@ export interface AppConfig {
   };
   readonly bridge: {
     readonly heartbeatIntervalMs: number;
+    /**
+     * Optional shared secret. When set, connectors must send this exact string
+     * as `client.token` in their hello frame or the bridge rejects them. Closes
+     * the documented auth gap on local-but-multi-user systems. Null = open.
+     */
+    readonly authToken: string | null;
   };
   readonly dashboard: {
     readonly enabled: boolean;

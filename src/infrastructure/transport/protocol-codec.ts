@@ -27,6 +27,7 @@ const handshakeSchema = z.object({
   jobId: z.string().nullable(),
   executor: z.string().nullable(),
   capabilities: z.array(z.string()).readonly(),
+  token: z.string().nullable().optional(),
 }) satisfies z.ZodType<ClientHandshake>;
 
 const opResultSchema = z.union([

@@ -22,6 +22,12 @@ export interface ClientHandshake {
   readonly executor: string | null;
   /** Executor functions the connector probed as available (e.g. "getgc", "hookfunction"). */
   readonly capabilities: readonly string[];
+  /**
+   * Optional shared-secret auth token. When the server has bridge.authToken set
+   * (via ROBLOX_MCP_BRIDGE_TOKEN env), this must match exactly or the connection
+   * is closed. When unset on the server side, this field is ignored.
+   */
+  readonly token?: string | null;
 }
 
 /** A unit of work the server asks the connector to perform. */

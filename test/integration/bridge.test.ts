@@ -34,7 +34,7 @@ function bridgeConfig(port = PORT): AppConfig {
     execution: { defaultTimeoutMs: 2000, defaultThreadContext: 8, scriptDirs: [] },
     semantic: { embeddingsUrl: null, embeddingsModel: "test" },
     // Long heartbeat so the test's own deadlines, not the server's, drive timing.
-    bridge: { heartbeatIntervalMs: 60000 },
+    bridge: { heartbeatIntervalMs: 60000, authToken: null },
     dashboard: { enabled: false },
   };
 }
@@ -127,9 +127,13 @@ describe("BridgeServer (integration)", () => {
     }
   });
 
-  async function startServer(): Promise<{ bridge: BridgeServer; port: number }> {
+  async function startServer(opts: { authToken?: string | null } = {}): Promise<{ bridge: BridgeServer; port: number }> {
+    const config = bridgeConfig();
+    if (opts.authToken !== undefined) {
+      Object.assign(config, { bridge: { ...config.bridge, authToken: opts.authToken } });
+    }
     const bridge = new BridgeServer({
-      config: bridgeConfig(),
+      config,
       logger: silentLogger(),
       clock: fakeClock(),
       metrics: noopMetrics(),
@@ -211,5 +215,29 @@ describe("BridgeServer (integration)", () => {
     await expect(pending).rejects.toMatchObject({ code: "CLIENT_DISCONNECTED" });
     // And the client should be gone from the directory.
     await waitFor(() => bridge.list().length === 0);
+  });
+
+  it("rejects a hello whose token does not match the server's authToken", async () => {
+    const { bridge, port } = await startServer({ authToken: "secret-x" });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+
+    const closed = new Promise<{ code: number }>((resolve) =>
+      ws.once("close", (code) => resolve({ code })),
+    );
+    ws.send(helloMessage({ token: "wrong" }));
+    const result = await closed;
+    expect(result.code).toBe(1008);
+    expect(bridge.list().length).toBe(0);
+  });
+
+  it("accepts a hello whose token matches the server's authToken", async () => {
+    const { bridge, port } = await startServer({ authToken: "secret-x" });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+
+    ws.send(helloMessage({ token: "secret-x" }));
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
   });
 });
