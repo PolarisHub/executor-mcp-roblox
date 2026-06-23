@@ -14,6 +14,7 @@ import type { Logger } from "../ports/logger.js";
 import type { Metrics } from "../ports/metrics.js";
 import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
+import type { SessionLogger } from "../ports/session-logger.js";
 import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
 import type { ToolRegistry } from "../tool/registry.js";
 import type { ScriptBridge } from "./script-bridge.js";
@@ -33,6 +34,7 @@ export interface ToolInvokerDeps {
   readonly activity: ActivityLog;
   readonly scriptBridge: ScriptBridge;
   readonly playbooks: SavedScriptsStore;
+  readonly sessionLogger: SessionLogger;
 }
 
 export interface InvocationRequest {
@@ -49,6 +51,8 @@ export interface InvocationRequest {
  * {@link DomainError}. Tools stay tiny because all of this lives here.
  */
 export class ToolInvoker {
+  private readonly seqBySession = new Map<string, number>();
+
   constructor(private readonly deps: ToolInvokerDeps) {}
 
   /** Loopback URL the executor's HTTP client can reach this server at. */
@@ -91,6 +95,7 @@ export class ToolInvoker {
       host: this.deps.host,
       semantic: this.deps.semantic,
       playbooks: this.deps.playbooks,
+      sessionLogger: this.deps.sessionLogger,
       scripting: {
         baseUrl: this.scriptBaseUrl(),
         mint: (opts) =>
@@ -146,11 +151,33 @@ export class ToolInvoker {
         ...(errorCode ? { errorCode } : {}),
       });
     };
+    const nextSeq = (this.seqBySession.get(request.sessionId) ?? 0) + 1;
+    this.seqBySession.set(request.sessionId, nextSeq);
+    const recordTrace = (
+      outcome: "ok" | "error",
+      elapsed: number,
+      payload: { result?: unknown; error?: { message: string; code?: string } },
+    ): void => {
+      this.deps.sessionLogger.append(
+        {
+          seq: nextSeq,
+          at: clock.now(),
+          tool: tool.name,
+          input: parsed.data,
+          elapsedMs: Math.round(elapsed),
+          sessionId: request.sessionId,
+          ...(client ? { clientId: client.id } : {}),
+          ...(outcome === "ok" ? { result: payload.result } : { error: payload.error }),
+        },
+        request.sessionLabel,
+      );
+    };
     try {
       const result = await tool.execute(parsed.data, context);
       const elapsed = clock.monotonic() - startedAt;
       metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "ok" });
       recordActivity("ok", elapsed);
+      recordTrace("ok", elapsed, { result: result.data });
       logger.info({ ms: Math.round(elapsed) }, "tool completed");
       return result;
     } catch (thrown) {
@@ -159,6 +186,7 @@ export class ToolInvoker {
       metrics.observe("tool.duration_ms", elapsed, { tool: tool.name, outcome: "error" });
       metrics.increment("tool.errors", 1, { tool: tool.name, code: error.code });
       recordActivity("error", elapsed, error.code);
+      recordTrace("error", elapsed, { error: { message: error.message, code: error.code } });
       logger.warn({ ms: Math.round(elapsed), err: error.toJSON() }, "tool failed");
       throw error;
     } finally {

@@ -9,6 +9,7 @@ import type { HostShell } from "../ports/host-shell.js";
 import type { Logger } from "../ports/logger.js";
 import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
+import type { SessionLogger } from "../ports/session-logger.js";
 
 /** Server-host capabilities for the few tools that operate outside the game sandbox. */
 export interface HostServices {
@@ -73,6 +74,8 @@ export interface ToolContext {
   readonly semantic: SemanticIndex;
   /** Persistent named-script library (playbooks). */
   readonly playbooks: SavedScriptsStore;
+  /** Per-session append-only tool-call trace. */
+  readonly sessionLogger: SessionLogger;
   /** Tool-calling bridge for the `script` tool (absent for ordinary tools/tests). */
   readonly scripting?: ScriptingContext;
 }

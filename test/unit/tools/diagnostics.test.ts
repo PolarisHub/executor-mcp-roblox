@@ -76,8 +76,8 @@ function mockContext(
 }
 
 describe("Diagnostics tools", () => {
-  it("registers all 9 tools in the category index, each tagged Diagnostics and read-only", () => {
-    expect(diagnosticsTools).toHaveLength(9);
+  it("registers all 12 tools in the category index, each tagged Diagnostics and read-only", () => {
+    expect(diagnosticsTools).toHaveLength(12);
     for (const tool of diagnosticsTools) {
       expect(tool.category).toBe("Diagnostics");
       expect(tool.mutatesState ?? false).toBe(false);

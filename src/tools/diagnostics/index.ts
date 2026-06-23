@@ -8,6 +8,9 @@ import getMemoryStats from "./get-memory-stats.js";
 import getRenderStats from "./get-render-stats.js";
 import bridgeStatus from "./bridge-status.js";
 import getConnectorDiagnostics from "./get-connector-diagnostics.js";
+import sessionList from "./session-list.js";
+import sessionShow from "./session-show.js";
+import sessionReplay from "./session-replay.js";
 
 /** Every Diagnostics tool (Wave 0 exemplars + the migrated census/recon set). */
 export const diagnosticsTools: Tool[] = [
@@ -20,4 +23,7 @@ export const diagnosticsTools: Tool[] = [
   getRenderStats,
   bridgeStatus,
   getConnectorDiagnostics,
+  sessionList,
+  sessionShow,
+  sessionReplay,
 ];

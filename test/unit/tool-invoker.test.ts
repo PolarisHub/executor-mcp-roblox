@@ -107,6 +107,11 @@ function buildDeps(overrides: Partial<ToolInvokerDeps> = {}): {
       list: async () => [],
       delete: async () => false,
     },
+    sessionLogger: {
+      append: () => undefined,
+      list: async () => [],
+      read: async () => [],
+    },
     ...overrides,
   };
   return { deps, registry, gateway, metrics };

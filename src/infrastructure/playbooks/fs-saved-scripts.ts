@@ -36,7 +36,6 @@ export class FsSavedScriptsStore implements SavedScriptsStore {
     return join(this.dir, name + ".json");
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async save(script: SavedScript): Promise<SavedScript> {
     const path = this.pathFor(script.name);
     const now = Date.now();

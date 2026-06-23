@@ -30,6 +30,7 @@ import { InMemorySessionStore } from "../infrastructure/persistence/in-memory-se
 import { HttpEmbeddingsProvider } from "../infrastructure/semantic/http-embeddings-provider.js";
 import { InMemorySemanticIndex } from "../infrastructure/semantic/in-memory-semantic-index.js";
 import { FsSavedScriptsStore } from "../infrastructure/playbooks/fs-saved-scripts.js";
+import { FsSessionLogger } from "../infrastructure/sessions/fs-session-logger.js";
 import { BridgeServer } from "../infrastructure/transport/bridge-server.js";
 import { allTools } from "../tools/index.js";
 
@@ -98,6 +99,8 @@ function compose(): Application {
   const scriptBridge = new ScriptBridge();
   // Filesystem-backed playbook store (~/.executor-mcp/playbooks/).
   const playbooks = new FsSavedScriptsStore();
+  // Filesystem-backed per-session trace (~/.executor-mcp/sessions/<id>.jsonl).
+  const sessionLogger = new FsSessionLogger();
 
   // Shared event bus + WS push channel for live dashboard updates. Subscribers
   // get output/activity/client-change events as JSON frames over /ws/dashboard.
@@ -145,6 +148,7 @@ function compose(): Application {
     activity,
     scriptBridge,
     playbooks,
+    sessionLogger,
   });
   scriptBridge.attach(invoker);
   bridge.attachScripting(scriptBridge);
