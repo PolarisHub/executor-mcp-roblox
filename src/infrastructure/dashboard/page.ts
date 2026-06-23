@@ -1972,7 +1972,7 @@ return p"></textarea>
   }, 1500);
 
   // ---- brief tab ----
-  var briefState = { clientId: null, summary: null, values: null, valuesLoading: false, summaryErr: null, valuesErr: null };
+  var briefState = { clientId: null, summary: null, values: null, valuesLoading: false, summaryErr: null, valuesErr: null, topRemotes: null, topRemotesErr: null };
   function fmtNum(v) { if (typeof v !== "number") return esc(String(v)); return v.toLocaleString(); }
   function renderBrief() {
     var el = byId("panel-brief");
@@ -1985,6 +1985,8 @@ return p"></textarea>
       briefState.values = null;
       briefState.summaryErr = null;
       briefState.valuesErr = null;
+      briefState.topRemotes = null;
+      briefState.topRemotesErr = null;
     }
     if (!clientId) {
       el.innerHTML = '<div class="empty"><div class="h">No client connected</div>' +
@@ -1992,6 +1994,7 @@ return p"></textarea>
       return;
     }
     if (!briefState.summary && !briefState.summaryErr) loadBriefSummary(clientId);
+    if (!briefState.topRemotes && !briefState.topRemotesErr) loadBriefTopRemotes(clientId);
     var s = briefState.summary;
     var meta = "";
     if (briefState.summaryErr) {
@@ -2024,7 +2027,8 @@ return p"></textarea>
         row("Name", esc(who.name || "—")) +
         row("DisplayName", esc(who.displayName || "—")) +
         row("UserId", esc(String(who.userId || "—"))) +
-        "</div>";
+        "</div>" +
+        renderBriefTopRemotes();
     }
 
     var v = briefState.values;
@@ -2068,6 +2072,60 @@ return p"></textarea>
         if (v && navigator.clipboard) navigator.clipboard.writeText(v).catch(function () {});
       };
     });
+    // Click a top-remote row -> open Spy tab with this remote pre-filtered.
+    el.querySelectorAll(".top-remote").forEach(function (n) {
+      n.style.cursor = "pointer";
+      n.onclick = function () {
+        var name = n.getAttribute("data-remote");
+        if (!name) return;
+        spyState.filter = name;
+        switchTab("spy");
+        // Update the textbox to reflect the pre-filled filter.
+        setTimeout(function () { var fb = byId("spy-filter"); if (fb) fb.value = name; }, 0);
+      };
+    });
+  }
+  function renderBriefTopRemotes() {
+    var r = briefState.topRemotes;
+    var err = briefState.topRemotesErr;
+    var header = '<div class="brief-card"><div class="brief-h">Top remotes <span class="muted" style="font-weight:normal;font-size:10px;margin-left:6px">(from spy)</span></div>';
+    if (err) return header + '<div class="muted" style="font-size:12px">' + esc(err) + '</div></div>';
+    if (!r) return header + '<div class="muted" style="font-size:12px"><span class="spin"></span></div></div>';
+    if (r.notRunning) return header + '<div class="muted" style="font-size:12px">Remote spy not installed. Call <span class="mono">ensure-remote-spy</span> to start capturing.</div></div>';
+    if (!r.top || !r.top.length) return header + '<div class="muted" style="font-size:12px">No remote traffic in the buffer yet.</div></div>';
+    var rows = r.top.map(function (t) {
+      var nm = String(t.remote || "—");
+      var short = nm.length > 36 ? "…" + nm.slice(-35) : nm;
+      return '<div class="brief-row top-remote" data-remote="' + esc(nm) + '" title="' + esc(nm) + ' — click to open Spy">' +
+        '<div class="brief-k mono" style="font-size:11.5px">' + esc(short) + '</div>' +
+        '<div class="brief-v num">' + fmtNum(t.count) + '</div></div>';
+    }).join("");
+    return header + rows + '<div class="muted" style="font-size:11px;margin-top:6px">Sample over last ' + r.sample + " calls. Click a row to open in Spy.</div></div>";
+  }
+  function loadBriefTopRemotes(clientId) {
+    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&limit=2000")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (briefState.clientId !== clientId) return;
+        if (data && data.error) { briefState.topRemotesErr = data.error; return; }
+        if (data && data.notRunning) { briefState.topRemotes = { notRunning: true }; renderBrief(); return; }
+        var logs = (data && data.logs) || [];
+        var byRemote = {};
+        for (var i = 0; i < logs.length; i++) {
+          var nm = String(logs[i].remote || "");
+          if (!nm) continue;
+          byRemote[nm] = (byRemote[nm] || 0) + 1;
+        }
+        var top = Object.keys(byRemote).map(function (k) { return { remote: k, count: byRemote[k] }; });
+        top.sort(function (a, b) { return b.count - a.count; });
+        briefState.topRemotes = { top: top.slice(0, 8), sample: logs.length };
+        if (activeTab === "brief") renderBrief();
+      })
+      .catch(function () {
+        if (briefState.clientId !== clientId) return;
+        briefState.topRemotesErr = "Spy not reachable.";
+        if (activeTab === "brief") renderBrief();
+      });
   }
   function loadBriefSummary(clientId) {
     fetch("/api/brief?client=" + encodeURIComponent(clientId))
