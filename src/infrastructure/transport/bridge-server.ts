@@ -83,8 +83,6 @@ interface BridgeDeps {
   readonly metrics: Metrics;
   /** Optional sink for game output streamed over the `event` channel. */
   readonly output?: OutputLog;
-  /** Wired after construction via {@link BridgeServer.attachScripting}. */
-  readonly scriptBridge?: ScriptBridge;
 }
 
 /**
@@ -119,7 +117,6 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     this.clock = deps.clock;
     this.metrics = deps.metrics;
     this.output = deps.output;
-    if (deps.scriptBridge) this.scriptBridge = deps.scriptBridge;
 
     this.http = new Hono();
     this.http.get("/health", (c) => c.json({ status: "ok" }));
