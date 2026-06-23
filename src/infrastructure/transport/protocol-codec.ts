@@ -6,6 +6,7 @@ import type {
   ClientMessage,
   ClientOp,
   OpResult,
+  PubSubFrame,
   RpcBatchCall,
   RpcBatchResultEntry,
   RpcResult,
@@ -61,6 +62,12 @@ const rpcBatchCallSchema = z.object({
   args: z.unknown(),
 }) satisfies z.ZodType<RpcBatchCall>;
 
+const pubSubFrameSchema = z.object({
+  channel: z.string(),
+  payload: z.unknown(),
+  fromClientId: z.string().optional(),
+}) satisfies z.ZodType<PubSubFrame>;
+
 const rpcBatchResultEntrySchema = z.union([
   z.object({ key: z.string(), ok: z.literal(true), data: z.unknown() }),
   z.object({
@@ -85,6 +92,7 @@ const serverMessageSchema = z.union([
     id: z.string(),
     results: z.array(rpcBatchResultEntrySchema).readonly(),
   }),
+  z.object({ type: z.literal("pubsub-message"), frame: pubSubFrameSchema }),
 ]) satisfies z.ZodType<ServerMessage>;
 
 const clientMessageSchema = z.union([
@@ -109,6 +117,9 @@ const clientMessageSchema = z.union([
     token: z.string(),
     calls: z.array(rpcBatchCallSchema).readonly(),
   }),
+  z.object({ type: z.literal("pubsub-subscribe"), channel: z.string() }),
+  z.object({ type: z.literal("pubsub-unsubscribe"), channel: z.string() }),
+  z.object({ type: z.literal("pubsub-publish"), channel: z.string(), payload: z.unknown() }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 /**

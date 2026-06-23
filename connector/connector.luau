@@ -405,6 +405,11 @@ end
 
 local pendingBatch = {}
 
+-- Cross-game pub/sub: channel name -> array of handler functions registered by
+-- in-game scripts via mcp.subscribe. Inbound `pubsub-message` frames dispatch
+-- to every handler registered on the channel. Cleared on disconnect.
+local pubsubHandlers = {}
+
 -- Block until the server returns an rpc-batch-result, or timeout. Same nil-guard
 -- pattern as awaitRpc for the disconnect race.
 local function awaitBatch(id, timeoutMs)
@@ -535,11 +540,61 @@ local function buildMcpTable(token)
 		return { __mcpDeferred = true, tool = camelToKebab(name), args = args or {} }
 	end
 
+	-- Cross-game pub/sub: publish a payload to every OTHER client subscribed to
+	-- the channel. Sender does NOT receive its own message.
+	local function publish(channel, payload)
+		if type(channel) ~= "string" or channel == "" then
+			error("mcp.publish: channel must be a non-empty string.", 0)
+		end
+		if currentSend == nil then
+			error("mcp.publish: bridge socket is not connected.", 0)
+		end
+		currentSend({ type = "pubsub-publish", channel = channel, payload = payload })
+	end
+	-- Subscribe to a channel; `handler` is called with (payload, fromClientId)
+	-- when another client publishes. Returns an unsubscribe function. Multiple
+	-- handlers per channel are supported.
+	local function subscribe(channel, handler)
+		if type(channel) ~= "string" or channel == "" then
+			error("mcp.subscribe: channel must be a non-empty string.", 0)
+		end
+		if type(handler) ~= "function" then
+			error("mcp.subscribe: handler must be a function.", 0)
+		end
+		if currentSend == nil then
+			error("mcp.subscribe: bridge socket is not connected.", 0)
+		end
+		local list = pubsubHandlers[channel]
+		if list == nil then
+			list = {}
+			pubsubHandlers[channel] = list
+			currentSend({ type = "pubsub-subscribe", channel = channel })
+		end
+		list[#list + 1] = handler
+		-- Returned unsubscribe drops just this handler; if it's the last, also
+		-- send pubsub-unsubscribe so the server stops routing to us.
+		return function()
+			local entries = pubsubHandlers[channel]
+			if entries == nil then return end
+			for i = #entries, 1, -1 do
+				if entries[i] == handler then table.remove(entries, i) end
+			end
+			if #entries == 0 then
+				pubsubHandlers[channel] = nil
+				if currentSend then
+					currentSend({ type = "pubsub-unsubscribe", channel = channel })
+				end
+			end
+		end
+	end
+
 	return setmetatable({
 		call = function(name, args) return call(name, args) end,
 		all = all,
 		parallel = all, -- ergonomic alias
 		defer = defer,
+		publish = publish,
+		subscribe = subscribe,
 	}, {
 		__index = function(_, key)
 			local name = camelToKebab(key)
@@ -852,6 +907,18 @@ local function runConnection()
 				pending.done = true
 			end
 			return
+		elseif mtype == "pubsub-message" then
+			-- Fanout to every handler registered on this channel; each runs on
+			-- its own task.spawn so a slow/blocking handler can't stall the
+			-- socket reader or other handlers.
+			local frame = message.frame or {}
+			local list = pubsubHandlers[frame.channel]
+			if list ~= nil then
+				for _, fn in ipairs(list) do
+					task.spawn(function() pcall(fn, frame.payload, frame.fromClientId) end)
+				end
+			end
+			return
 		end
 		-- Unknown message types are ignored (forward-compatible).
 	end
@@ -978,6 +1045,9 @@ local function runConnection()
 	pushOutput = nil
 	markRecentScript = nil
 	wasRecentlyScripted = nil
+	-- Drop pubsub handlers so a reconnect starts clean and stale handlers do not
+	-- fire against a different game.
+	pubsubHandlers = {}
 	-- Wake any mcp.all() awaiters with a clean disconnected outcome.
 	for _, pending in pairs(pendingBatch) do
 		pending.value = pending.value or {}

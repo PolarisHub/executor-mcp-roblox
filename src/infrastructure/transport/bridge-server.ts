@@ -109,6 +109,8 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
   private scriptBridge: ScriptBridge | null = null;
   /** Optional sink for client connect/disconnect events (used by the dashboard WS). */
   private onClientChange: ((action: "connect" | "disconnect", id: string) => void) | null = null;
+  /** Channel name -> set of subscribed clientIds for cross-game pub/sub. */
+  private readonly pubsubByChannel = new Map<string, Set<ClientId>>();
 
   /** Subscribe to client connect/disconnect events. Pass null to unsubscribe. */
   setOnClientChange(fn: ((action: "connect" | "disconnect", id: string) => void) | null): void {
@@ -547,6 +549,24 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
         void this.handleRpcBatch(connection, message);
         return;
       }
+      case "pubsub-subscribe": {
+        let set = this.pubsubByChannel.get(message.channel);
+        if (!set) { set = new Set(); this.pubsubByChannel.set(message.channel, set); }
+        set.add(connection.id);
+        return;
+      }
+      case "pubsub-unsubscribe": {
+        const set = this.pubsubByChannel.get(message.channel);
+        if (set) {
+          set.delete(connection.id);
+          if (set.size === 0) this.pubsubByChannel.delete(message.channel);
+        }
+        return;
+      }
+      case "pubsub-publish": {
+        this.routePubSub(connection.id, message.channel, message.payload);
+        return;
+      }
       default: {
         const exhaustive: never = message;
         void exhaustive;
@@ -638,6 +658,36 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     }
   }
 
+  /**
+   * Cross-game pub/sub fanout: deliver a `pubsub-message` to every connection
+   * subscribed to `channel` except the sender itself. Best-effort per receiver
+   * so one bad socket can't poison the rest.
+   */
+  private routePubSub(senderId: ClientId, channel: string, payload: unknown): void {
+    const subs = this.pubsubByChannel.get(channel);
+    if (!subs) return;
+    for (const targetId of subs) {
+      if (targetId === senderId) continue;
+      const target = this.connections.get(targetId);
+      if (!target) {
+        subs.delete(targetId);
+        continue;
+      }
+      try {
+        this.send(target, {
+          type: "pubsub-message",
+          frame: { channel, payload, fromClientId: senderId },
+        });
+      } catch (error) {
+        this.logger.warn(
+          { err: toDomainError(error).toJSON(), clientId: targetId, channel },
+          "failed to deliver pubsub-message",
+        );
+      }
+    }
+    this.metrics.increment("bridge.pubsub.published", 1, { channel });
+  }
+
   /** Record a batch of game-output lines streamed on the `output` event channel. */
   private recordOutput(connection: Connection, data: unknown): void {
     const sink = this.output;
@@ -681,6 +731,13 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       return;
     }
     this.connections.delete(connection.id);
+    // Drop any pub/sub subscriptions this client held so we don't route to a
+    // dead socket on the next publish.
+    for (const [channel, subs] of this.pubsubByChannel) {
+      if (subs.delete(connection.id) && subs.size === 0) {
+        this.pubsubByChannel.delete(channel);
+      }
+    }
     if (this.onClientChange) this.onClientChange("disconnect", connection.id);
 
     this.rejectAllPending(connection, reason);

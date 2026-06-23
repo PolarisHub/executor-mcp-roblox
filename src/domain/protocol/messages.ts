@@ -73,6 +73,14 @@ export interface RpcBatchCall {
 }
 export type RpcBatchResultEntry = RpcResult & { readonly key: string };
 
+/** A cross-game pub/sub message; routed by channel name. */
+export interface PubSubFrame {
+  readonly channel: string;
+  readonly payload: unknown;
+  /** Server-assigned clientId of the sender (for routing + self-skip). */
+  readonly fromClientId?: string;
+}
+
 /** Server -> connector. */
 export type ServerMessage =
   | {
@@ -83,7 +91,8 @@ export type ServerMessage =
   | { readonly type: "op"; readonly id: string; readonly op: ClientOp }
   | { readonly type: "ping"; readonly id: string }
   | { readonly type: "rpc-result"; readonly id: string; readonly result: RpcResult }
-  | { readonly type: "rpc-batch-result"; readonly id: string; readonly results: readonly RpcBatchResultEntry[] };
+  | { readonly type: "rpc-batch-result"; readonly id: string; readonly results: readonly RpcBatchResultEntry[] }
+  | { readonly type: "pubsub-message"; readonly frame: PubSubFrame };
 
 /** Connector -> server. */
 export type ClientMessage =
@@ -105,4 +114,20 @@ export type ClientMessage =
       readonly id: string;
       readonly token: string;
       readonly calls: readonly RpcBatchCall[];
+    }
+  | {
+      /** Subscribe to a pub/sub channel; future `pubsub-message` frames on it arrive at this connector. */
+      readonly type: "pubsub-subscribe";
+      readonly channel: string;
+    }
+  | {
+      /** Unsubscribe from a channel. */
+      readonly type: "pubsub-unsubscribe";
+      readonly channel: string;
+    }
+  | {
+      /** Publish a message to every subscriber of `channel` (excluding self). */
+      readonly type: "pubsub-publish";
+      readonly channel: string;
+      readonly payload: unknown;
     };
