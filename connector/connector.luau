@@ -364,6 +364,11 @@ local currentSend = nil -- set by runConnection while a socket is alive
 -- flush buffer. Used by both the LogService.MessageOut tap (source="game") and
 -- the per-script print/warn wrappers (source="script", scriptToken=...).
 local pushOutput = nil
+-- Set by runConnection. The script wrappers call markRecentScript(line) right
+-- before calling real_print; the LogService tap calls wasRecentlyScripted(line)
+-- so we don't emit the same line twice as both "script" and "game".
+local markRecentScript = nil
+local wasRecentlyScripted = nil
 
 -- Camel-case to kebab-case for mcp.getPlayers -> "get-players".
 local function camelToKebab(s)
@@ -571,7 +576,10 @@ local function runEval(op)
 					scriptOutput[#scriptOutput + 1] = line
 				end
 				-- Also push as a tagged frame so the dashboard Output tab can
-				-- filter to this specific script run (scriptToken-scoped).
+				-- filter to this specific script run (scriptToken-scoped). The
+				-- LogService tap below will fire for the real_print call we make
+				-- on the next line — markRecentScript marks this exact message
+				-- so the tap can skip the duplicate.
 				if pushOutput then
 					pushOutput({
 						kind = kind,
@@ -580,6 +588,7 @@ local function runEval(op)
 						scriptToken = op.scriptToken,
 					})
 				end
+				if markRecentScript then markRecentScript(line) end
 				pcall(real, ...)
 			end
 		end
@@ -866,6 +875,32 @@ local function runConnection()
 			outBuf[#outBuf + 1] = entry
 		end
 	end
+	-- Tiny rolling buffer of recently script-emitted lines, keyed by message
+	-- text + os.clock(). The LogService tap fires for the real_print() that the
+	-- script wrapper makes immediately after pushing its tagged frame, so we
+	-- drop the LogService duplicate if it lands within a short window.
+	local recentScript, recentTail = {}, 0
+	markRecentScript = function(line)
+		recentTail = recentTail + 1
+		recentScript[recentTail] = { msg = line, t = os.clock() }
+		-- Keep the buffer small; entries older than the dedup window are useless.
+		if recentTail > 32 then
+			local cutoff = recentTail - 32
+			for k, _ in pairs(recentScript) do if k <= cutoff then recentScript[k] = nil end end
+		end
+	end
+	wasRecentlyScripted = function(line)
+		local now = os.clock()
+		for k, e in pairs(recentScript) do
+			if now - e.t > 0.5 then
+				recentScript[k] = nil
+			elseif e.msg == line then
+				recentScript[k] = nil -- consume so identical-but-distinct lines aren't all eaten
+				return true
+			end
+		end
+		return false
+	end
 	pcall(function()
 		local LogService = safeService("LogService")
 		if LogService == nil then
@@ -892,10 +927,14 @@ local function runConnection()
 			return "print"
 		end
 		outConn = LogService.MessageOut:Connect(function(message, messageType)
+			local text = tostring(message)
+			-- Skip the LogService duplicate when a script wrapper just emitted
+			-- the same line as a tagged "script" frame.
+			if wasRecentlyScripted and wasRecentlyScripted(text) then return end
 			if #outBuf < 500 then
 				outBuf[#outBuf + 1] = {
 					kind = classify(messageType),
-					message = tostring(message),
+					message = text,
 					source = "game",
 				}
 			end
@@ -921,6 +960,8 @@ local function runConnection()
 	-- Reject any RPC calls left in flight so awaiting scripts unblock instead of hanging.
 	currentSend = nil
 	pushOutput = nil
+	markRecentScript = nil
+	wasRecentlyScripted = nil
 	-- Wake any mcp.all() awaiters with a clean disconnected outcome.
 	for _, pending in pairs(pendingBatch) do
 		pending.value = pending.value or {}
