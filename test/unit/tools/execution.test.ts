@@ -26,10 +26,10 @@ function stubContext(canned: unknown): {
 }
 
 describe("execution tools", () => {
-  it("exports all 13 tools with unique names in the Execution category", () => {
-    expect(executionTools).toHaveLength(13);
+  it("exports all 14 tools with unique names in the Execution category", () => {
+    expect(executionTools).toHaveLength(14);
     const names = executionTools.map((t) => t.name);
-    expect(new Set(names).size).toBe(13);
+    expect(new Set(names).size).toBe(14);
     for (const tool of executionTools) {
       expect(tool.category).toBe("Execution");
     }
@@ -46,6 +46,7 @@ describe("execution tools", () => {
       "run-with-timeout",
       "execute-file",
       "script",
+      "script-fanout",
       "vm-reset",
     ]);
   });

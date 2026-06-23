@@ -2,7 +2,7 @@ import type { z } from "zod";
 import type { RobloxClient } from "../../domain/client/client.js";
 import type { ClientSelection, SelectionResolution } from "../../domain/client/selection.js";
 import type { ToolCategory } from "../../domain/tool/category.js";
-import type { SessionId } from "../../domain/shared/ids.js";
+import type { ClientId, SessionId } from "../../domain/shared/ids.js";
 import type { ClientDirectory } from "../ports/client-directory.js";
 import type { HostFileSystem } from "../ports/host-file-system.js";
 import type { HostShell } from "../ports/host-shell.js";
@@ -60,6 +60,8 @@ export interface ToolContext {
   readonly client: RobloxClient | undefined;
   /** Run Luau on the resolved active client and get the decoded result. */
   runLuau(source: string, options?: LuauOptions): Promise<unknown>;
+  /** Run Luau on a specific connected client (used by fanout tools). */
+  runLuauOn(clientId: ClientId, source: string, options?: LuauOptions): Promise<unknown>;
   /** Read access to every connected client (for management/diagnostic tools). */
   readonly clients: ClientDirectory;
   /** This call's session + selection controls. */

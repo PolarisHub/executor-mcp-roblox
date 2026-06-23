@@ -115,6 +115,18 @@ export class ToolInvoker {
           controller.signal,
         );
       },
+      runLuauOn: (targetId, source, options) =>
+        gateway.eval(
+          targetId,
+          {
+            source,
+            threadContext: options?.threadContext ?? config.execution.defaultThreadContext,
+            timeoutMs: options?.timeoutMs ?? config.execution.defaultTimeoutMs,
+            ...(options?.env ? { env: options.env } : {}),
+            ...(options?.scriptToken ? { scriptToken: options.scriptToken } : {}),
+          },
+          controller.signal,
+        ),
     };
 
     const startedAt = clock.monotonic();
