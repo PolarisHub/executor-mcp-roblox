@@ -13,6 +13,22 @@ const SERVER_NAME = "executor-mcp-roblox";
 const DEFAULT_VERSION = "2.0.0";
 const MUTATES_NOTE = " (writes live game state)";
 
+/**
+ * Encode tool data as a stable string for the MCP response. JSON.stringify can
+ * throw (circular refs, BigInt) or return literal `undefined` for `undefined`
+ * inputs — both of which would corrupt the SDK response. Fall back to a marker
+ * string so the AI gets *something* rather than a transport crash.
+ */
+function safeStringify(value: unknown): string {
+  if (value === undefined) return "undefined";
+  try {
+    const encoded = JSON.stringify(value, null, 2);
+    return encoded === undefined ? String(value) : encoded;
+  } catch (err) {
+    return `<unserializable result: ${(err as Error).message}>`;
+  }
+}
+
 export interface McpAdapterDeps {
   readonly registry: ToolRegistry;
   readonly invoker: ToolInvoker;
@@ -113,7 +129,7 @@ export class McpAdapter {
             sessionLabel: config.session.label,
           });
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            content: [{ type: "text" as const, text: safeStringify(result.data) }],
             isError: result.isError ?? false,
           };
         } catch (thrown) {
