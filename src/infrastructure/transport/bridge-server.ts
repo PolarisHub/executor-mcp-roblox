@@ -225,6 +225,9 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
 
   /** Wire the bridge's RPC routing after construction (breaks the dep cycle). */
   attachScripting(scriptBridge: ScriptBridge): void {
+    if (this.scriptBridge && this.scriptBridge !== scriptBridge) {
+      this.logger.warn("attachScripting called twice; replacing previous script bridge");
+    }
     this.scriptBridge = scriptBridge;
   }
 
