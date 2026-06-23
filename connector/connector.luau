@@ -735,9 +735,22 @@ local function runConnection()
 			kindOf[Enum.MessageType.MessageWarning] = "warn"
 			kindOf[Enum.MessageType.MessageError] = "error"
 		end)
+		-- Fallback when the Enum probe failed (kindOf empty): scan the Name so
+		-- errors/warnings don't silently get tagged as "print".
+		local function classify(messageType)
+			local kind = kindOf[messageType]
+			if kind then return kind end
+			local ok, name = pcall(tostring, messageType)
+			if ok and typeof(name) == "string" then
+				if string.find(name, "Error") then return "error" end
+				if string.find(name, "Warning") then return "warn" end
+				if string.find(name, "Info") then return "info" end
+			end
+			return "print"
+		end
 		outConn = LogService.MessageOut:Connect(function(message, messageType)
 			if #outBuf < 500 then
-				outBuf[#outBuf + 1] = { kind = kindOf[messageType] or "print", message = tostring(message) }
+				outBuf[#outBuf + 1] = { kind = classify(messageType), message = tostring(message) }
 			end
 		end)
 	end)
