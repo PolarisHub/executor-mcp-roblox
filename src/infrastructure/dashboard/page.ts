@@ -2240,12 +2240,53 @@ return p"></textarea>
       '<div class="brief-grid">' + meta + '</div>' +
       '<div class="brief-section">' +
         '<div class="brief-section-head"><span class="sec">Candidate value paths</span>' +
+          '<button class="out-btn" id="brief-fanout" style="margin-right:6px" title="Build a script-fanout that scans every connected client in parallel">Fanout across all clients</button>' +
           '<button class="out-btn" id="brief-scan">' + (briefState.valuesLoading ? "Scanning…" : "Discover values") + '</button>' +
         '</div>' + valuesHtml +
       '</div>';
 
     var scanBtn = byId("brief-scan");
     if (scanBtn) scanBtn.onclick = function () { loadBriefValues(briefState.clientId); };
+    var fanoutBtn = byId("brief-fanout");
+    if (fanoutBtn) fanoutBtn.onclick = function () {
+      // Build a script that calls script-fanout with a Discover-Values body across
+      // every connected client, aggregating by place + game and returning the
+      // ranked candidates per client.
+      var Q = String.fromCharCode(34);
+      var prefill = [
+        "-- Discover candidate value paths on every connected client in parallel.",
+        "-- Edit the inner body to scan anything else (mcp.* is bound in each).",
+        "local result = mcp.scriptFanout({",
+        "  clients = " + Q + "all" + Q + ",",
+        "  source = [[",
+        "    local found = mcp.discoverPlayerValues({ limit = 25 })",
+        "    return {",
+        "      place = game.PlaceId,",
+        "      jobId = game.JobId,",
+        "      candidates = (found and found.candidates) or {},",
+        "    }",
+        "  ]],",
+        "})",
+        "",
+        "-- Aggregate: print one line per client with the top candidate.",
+        "for _, r in ipairs(result.results) do",
+        "  local top = r.ok and r.result and r.result.candidates and r.result.candidates[1]",
+        "  if top then",
+        "    print(string.format(" + Q + "%s -> %s = %s (score %d)" + Q + ", r.displayName or r.clientId, top.path, tostring(top.value), top.score))",
+        "  else",
+        "    print(string.format(" + Q + "%s -> %s" + Q + ", r.displayName or r.clientId, r.error or " + Q + "no candidates" + Q + "))",
+        "  end",
+        "end",
+        "",
+        "return result.summary",
+      ].join("\n");
+      // Stash on REPL state and switch.
+      var ta = byId("repl-src");
+      if (ta) ta.value = prefill;
+      replState.last = null; replState.lastErr = null;
+      switchTab("repl");
+      setTimeout(function () { var t = byId("repl-src"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }, 0);
+    };
     // Wire .copy click-to-copy on PlaceId / JobId
     el.querySelectorAll(".copy").forEach(function (n) {
       n.onclick = function () {
