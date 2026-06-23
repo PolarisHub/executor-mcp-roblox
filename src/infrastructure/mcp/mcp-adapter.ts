@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { DomainError, toDomainError } from "../../domain/errors/errors.js";
+import type { ActivityLog } from "../../application/ports/activity-log.js";
 import type { AppConfig } from "../../application/ports/config.js";
 import type { Logger } from "../../application/ports/logger.js";
 import type { ToolInvoker } from "../../application/services/tool-invoker.js";
@@ -36,6 +37,7 @@ export interface McpAdapterDeps {
   readonly invoker: ToolInvoker;
   readonly config: AppConfig;
   readonly logger: Logger;
+  readonly activity: ActivityLog;
 }
 
 /**
@@ -62,6 +64,7 @@ export class McpAdapter {
       this.registerTool(server, tool);
     }
     this.registerListTools(server);
+    this.registerSuggestTools(server);
 
     logger.info(
       { tools: registry.size, categories: registry.categoryCounts().length },
@@ -219,5 +222,91 @@ export class McpAdapter {
       count: matches.length,
       tools: matches,
     };
+  }
+
+  /**
+   * `suggest-tools` ranks tools matching a keyword by past success — a tiny
+   * lifetime co-occurrence score that nudges the AI toward known-good chains
+   * without an embedding pipeline. Tools the server has never run yet still
+   * appear (no history => no penalty) but are ranked below proven ones.
+   */
+  private registerSuggestTools(server: McpServer): void {
+    const input = z.object({
+      keyword: z
+        .string()
+        .min(1)
+        .describe("Keyword to match across each tool's name, title, and description."),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .max(50)
+        .optional()
+        .describe("Maximum tools to return, default 10."),
+      category: z
+        .string()
+        .optional()
+        .describe("Optional: restrict to one category."),
+    });
+
+    server.registerTool(
+      "suggest-tools",
+      {
+        title: "Suggest tools for a keyword, ranked by past success",
+        description:
+          "Surface the right tool faster by searching the catalog with a keyword and ranking results by past " +
+          "runs and success ratio. Pure local heuristic: tools that have been called successfully many times " +
+          "before float above untouched ones. Pass { keyword } (required), { limit } (default 10), and " +
+          "optional { category }. Use this when you suspect a tool exists but `list-tools` is too noisy.",
+        inputSchema: input.shape,
+        annotations: { title: "Suggest tools ranked by past success", readOnlyHint: true },
+      },
+      async (args: z.infer<typeof input>) => {
+        const data = this.runSuggestTools(args.keyword, args.limit, args.category);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+          isError: false,
+        };
+      },
+    );
+  }
+
+  private runSuggestTools(keyword: string, limit?: number, category?: string): unknown {
+    const { registry, activity } = this.deps;
+    const stats = new Map(activity.perToolStats().map((s) => [s.tool, s]));
+    const term = keyword.toLowerCase();
+    const matches = registry
+      .list()
+      .filter((tool) => (category ? tool.category === category : true))
+      .filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(term) ||
+          tool.title.toLowerCase().includes(term) ||
+          tool.description.toLowerCase().includes(term),
+      )
+      .map((tool) => {
+        const s = stats.get(tool.name);
+        const runs = s?.runs ?? 0;
+        const errors = s?.errors ?? 0;
+        const successRatio = runs > 0 ? (runs - errors) / runs : 0;
+        // Score: name match dominates, then bias by past success * log(runs+1).
+        const nameHit = tool.name.toLowerCase().includes(term) ? 100 : 0;
+        const titleHit = tool.title.toLowerCase().includes(term) ? 25 : 0;
+        const successScore = successRatio * Math.log10(runs + 1) * 50;
+        const score = nameHit + titleHit + successScore;
+        return {
+          name: tool.name,
+          title: tool.title,
+          category: tool.category,
+          runs,
+          errors,
+          successRatio: Math.round(successRatio * 1000) / 1000,
+          score: Math.round(score * 10) / 10,
+        };
+      })
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .slice(0, limit ?? 10);
+
+    return { keyword, ...(category ? { category } : {}), count: matches.length, tools: matches };
   }
 }

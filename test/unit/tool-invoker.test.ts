@@ -98,6 +98,7 @@ function buildDeps(overrides: Partial<ToolInvokerDeps> = {}): {
       record: () => undefined,
       recent: () => [],
       summary: () => ({ total: 0, errors: 0 }),
+      perToolStats: () => [],
     },
     scriptBridge: new ScriptBridge(),
     ...overrides,

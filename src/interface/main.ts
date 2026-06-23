@@ -149,7 +149,7 @@ function compose(): Application {
     });
   });
 
-  const mcp = new McpAdapter({ registry, invoker, config, logger });
+  const mcp = new McpAdapter({ registry, invoker, config, logger, activity });
 
   // Pre-create this process's session so its label shows up immediately.
   sessionStore.getOrCreate(config.session.id, config.session.label);

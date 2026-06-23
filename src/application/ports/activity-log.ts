@@ -21,6 +21,13 @@ export interface ActivitySummary {
   readonly errors: number;
 }
 
+/** Lifetime per-tool counters used by `suggest-tools` and similar discovery aids. */
+export interface ToolStats {
+  readonly tool: string;
+  readonly runs: number;
+  readonly errors: number;
+}
+
 /**
  * Append-only feed of recent tool invocations, kept for the dashboard. The
  * {@link ToolInvoker} records every call; the dashboard reads the tail.
@@ -31,4 +38,6 @@ export interface ActivityLog {
   recent(limit: number): readonly ActivityRecord[];
   /** Lifetime totals (not bounded by the ring buffer). */
   summary(): ActivitySummary;
+  /** Per-tool lifetime counters; used to rank tools by past success. */
+  perToolStats(): readonly ToolStats[];
 }
