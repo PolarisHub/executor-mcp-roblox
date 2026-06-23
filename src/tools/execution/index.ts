@@ -11,6 +11,10 @@ import runLoop from "./run-loop.js";
 import runDeferred from "./run-deferred.js";
 import runWithTimeout from "./run-with-timeout.js";
 import executeFile from "./execute-file.js";
+import playbookDelete from "./playbook-delete.js";
+import playbookList from "./playbook-list.js";
+import playbookRun from "./playbook-run.js";
+import playbookSave from "./playbook-save.js";
 import script from "./script.js";
 import scriptFanout from "./script-fanout.js";
 import vmReset from "./vm-reset.js";
@@ -31,4 +35,8 @@ export const executionTools: Tool[] = [
   script,
   scriptFanout,
   vmReset,
+  playbookSave,
+  playbookList,
+  playbookRun,
+  playbookDelete,
 ];

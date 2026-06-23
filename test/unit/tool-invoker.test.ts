@@ -101,6 +101,12 @@ function buildDeps(overrides: Partial<ToolInvokerDeps> = {}): {
       perToolStats: () => [],
     },
     scriptBridge: new ScriptBridge(),
+    playbooks: {
+      save: async (s) => ({ ...s, createdAt: 0, updatedAt: 0 }),
+      get: async () => null,
+      list: async () => [],
+      delete: async () => false,
+    },
     ...overrides,
   };
   return { deps, registry, gateway, metrics };

@@ -29,6 +29,7 @@ import { systemClock } from "../infrastructure/observability/system-clock.js";
 import { InMemorySessionStore } from "../infrastructure/persistence/in-memory-session-store.js";
 import { HttpEmbeddingsProvider } from "../infrastructure/semantic/http-embeddings-provider.js";
 import { InMemorySemanticIndex } from "../infrastructure/semantic/in-memory-semantic-index.js";
+import { FsSavedScriptsStore } from "../infrastructure/playbooks/fs-saved-scripts.js";
 import { BridgeServer } from "../infrastructure/transport/bridge-server.js";
 import { allTools } from "../tools/index.js";
 
@@ -95,6 +96,8 @@ function compose(): Application {
   const activity = new InMemoryActivityLog();
   // Backs the `script` tool's in-game `mcp.<tool>()` bridge.
   const scriptBridge = new ScriptBridge();
+  // Filesystem-backed playbook store (~/.executor-mcp/playbooks/).
+  const playbooks = new FsSavedScriptsStore();
 
   // Shared event bus + WS push channel for live dashboard updates. Subscribers
   // get output/activity/client-change events as JSON frames over /ws/dashboard.
@@ -141,6 +144,7 @@ function compose(): Application {
     semantic,
     activity,
     scriptBridge,
+    playbooks,
   });
   scriptBridge.attach(invoker);
   bridge.attachScripting(scriptBridge);

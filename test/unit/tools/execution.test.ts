@@ -26,10 +26,10 @@ function stubContext(canned: unknown): {
 }
 
 describe("execution tools", () => {
-  it("exports all 14 tools with unique names in the Execution category", () => {
-    expect(executionTools).toHaveLength(14);
+  it("exports all 18 tools with unique names in the Execution category", () => {
+    expect(executionTools).toHaveLength(18);
     const names = executionTools.map((t) => t.name);
-    expect(new Set(names).size).toBe(14);
+    expect(new Set(names).size).toBe(18);
     for (const tool of executionTools) {
       expect(tool.category).toBe("Execution");
     }
@@ -48,6 +48,10 @@ describe("execution tools", () => {
       "script",
       "script-fanout",
       "vm-reset",
+      "playbook-save",
+      "playbook-list",
+      "playbook-run",
+      "playbook-delete",
     ]);
   });
 

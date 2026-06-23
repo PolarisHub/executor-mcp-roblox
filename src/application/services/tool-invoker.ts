@@ -12,6 +12,7 @@ import type { ClientDirectory } from "../ports/client-directory.js";
 import type { ExecutionGateway } from "../ports/execution-gateway.js";
 import type { Logger } from "../ports/logger.js";
 import type { Metrics } from "../ports/metrics.js";
+import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
 import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
 import type { ToolRegistry } from "../tool/registry.js";
@@ -31,6 +32,7 @@ export interface ToolInvokerDeps {
   readonly semantic: SemanticIndex;
   readonly activity: ActivityLog;
   readonly scriptBridge: ScriptBridge;
+  readonly playbooks: SavedScriptsStore;
 }
 
 export interface InvocationRequest {
@@ -88,6 +90,7 @@ export class ToolInvoker {
       session: sessions.createContext(request.sessionId, request.sessionLabel),
       host: this.deps.host,
       semantic: this.deps.semantic,
+      playbooks: this.deps.playbooks,
       scripting: {
         baseUrl: this.scriptBaseUrl(),
         mint: (opts) =>

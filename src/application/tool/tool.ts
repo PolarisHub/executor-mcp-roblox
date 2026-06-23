@@ -7,6 +7,7 @@ import type { ClientDirectory } from "../ports/client-directory.js";
 import type { HostFileSystem } from "../ports/host-file-system.js";
 import type { HostShell } from "../ports/host-shell.js";
 import type { Logger } from "../ports/logger.js";
+import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
 
 /** Server-host capabilities for the few tools that operate outside the game sandbox. */
@@ -70,6 +71,8 @@ export interface ToolContext {
   readonly host: HostServices;
   /** Per-client semantic script index. */
   readonly semantic: SemanticIndex;
+  /** Persistent named-script library (playbooks). */
+  readonly playbooks: SavedScriptsStore;
   /** Tool-calling bridge for the `script` tool (absent for ordinary tools/tests). */
   readonly scripting?: ScriptingContext;
 }
