@@ -36,7 +36,9 @@ export class Dashboard {
 
     app.get("/api/output", (c) => {
       const client = c.req.query("client") || undefined;
-      const limit = Math.min(Number(c.req.query("limit")) || 500, 2000);
+      const raw = c.req.query("limit");
+      const parsed = raw === undefined ? NaN : Number(raw);
+      const limit = Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 2000) : 500;
       return c.json({ entries: this.deps.output.recent(limit, client) });
     });
 
