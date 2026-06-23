@@ -23,7 +23,9 @@ function safeStringify(value: unknown): string {
   if (value === undefined) return "undefined";
   try {
     const encoded = JSON.stringify(value, null, 2);
-    return encoded === undefined ? String(value) : encoded;
+    // JSON.stringify returns `undefined` for symbols / functions; degrade to a
+    // marker rather than handing the SDK something it'll reject as not-a-string.
+    return encoded ?? "<unserializable result>";
   } catch (err) {
     return `<unserializable result: ${(err as Error).message}>`;
   }
