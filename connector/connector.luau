@@ -360,6 +360,10 @@ end
 local pendingRpc = {}   -- [id] = { done=false, ok=false, value=nil }
 local rpcCounter = 0
 local currentSend = nil -- set by runConnection while a socket is alive
+-- Output sink set by runConnection: appends a tagged entry into the per-tick
+-- flush buffer. Used by both the LogService.MessageOut tap (source="game") and
+-- the per-script print/warn wrappers (source="script", scriptToken=...).
+local pushOutput = nil
 
 -- Camel-case to kebab-case for mcp.getPlayers -> "get-players".
 local function camelToKebab(s)
@@ -465,19 +469,30 @@ local function runEval(op)
 		scriptOutput = {}
 		local mcp = buildMcpTable(op.scriptToken)
 		local realPrint, realWarn = GLOBAL_ENV.print, GLOBAL_ENV.warn
-		local function cap(real)
+		local function cap(real, kind)
 			return function(...)
 				local n = select("#", ...)
 				local parts = (table.create and table.create(n)) or {}
 				for i = 1, n do parts[i] = tostring((select(i, ...))) end
+				local line = table.concat(parts, "\t")
 				if #scriptOutput < 1000 then
-					scriptOutput[#scriptOutput + 1] = table.concat(parts, "\t")
+					scriptOutput[#scriptOutput + 1] = line
+				end
+				-- Also push as a tagged frame so the dashboard Output tab can
+				-- filter to this specific script run (scriptToken-scoped).
+				if pushOutput then
+					pushOutput({
+						kind = kind,
+						message = line,
+						source = "script",
+						scriptToken = op.scriptToken,
+					})
 				end
 				pcall(real, ...)
 			end
 		end
 		local runEnv = setmetatable(
-			{ print = cap(realPrint), warn = cap(realWarn), mcp = mcp },
+			{ print = cap(realPrint, "print"), warn = cap(realWarn, "warn"), mcp = mcp },
 			{ __index = baseEnv, __newindex = baseEnv }
 		)
 		pcall(function()
@@ -744,6 +759,13 @@ local function runConnection()
 	-- Best-effort and fully guarded; a failure here never affects the connection.
 	local outBuf = {}
 	local outConn = nil
+	-- Expose a module-visible appender so the per-script print/warn wrappers can
+	-- also feed this buffer (with source="script" + scriptToken metadata).
+	pushOutput = function(entry)
+		if entry and #outBuf < 500 then
+			outBuf[#outBuf + 1] = entry
+		end
+	end
 	pcall(function()
 		local LogService = safeService("LogService")
 		if LogService == nil then
@@ -771,7 +793,11 @@ local function runConnection()
 		end
 		outConn = LogService.MessageOut:Connect(function(message, messageType)
 			if #outBuf < 500 then
-				outBuf[#outBuf + 1] = { kind = classify(messageType), message = tostring(message) }
+				outBuf[#outBuf + 1] = {
+					kind = classify(messageType),
+					message = tostring(message),
+					source = "game",
+				}
 			end
 		end)
 	end)
@@ -794,6 +820,7 @@ local function runConnection()
 
 	-- Reject any RPC calls left in flight so awaiting scripts unblock instead of hanging.
 	currentSend = nil
+	pushOutput = nil
 	for id, pending in pairs(pendingRpc) do
 		pending.value = { ok = false, error = "bridge disconnected" }
 		pending.done = true

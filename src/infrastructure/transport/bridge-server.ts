@@ -599,14 +599,25 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     const now = this.clock.now();
     for (const raw of entries) {
       if (typeof raw !== "object" || raw === null) continue;
-      const e = raw as { kind?: unknown; message?: unknown; at?: unknown };
+      const e = raw as {
+        kind?: unknown;
+        message?: unknown;
+        at?: unknown;
+        source?: unknown;
+        scriptToken?: unknown;
+      };
       const message = typeof e.message === "string" ? e.message : "";
+      const source = e.source === "script" ? "script" : "game";
       sink.record({
         clientId: connection.id,
         clientName: connection.client.username,
         kind: asOutputKind(e.kind),
         message,
         at: typeof e.at === "number" && e.at > 0 ? e.at : now,
+        source,
+        ...(source === "script" && typeof e.scriptToken === "string"
+          ? { scriptToken: e.scriptToken }
+          : {}),
       });
     }
   }

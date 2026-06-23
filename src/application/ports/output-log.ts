@@ -9,6 +9,9 @@
 /** Classifies a line of game output, mirroring Roblox's `Enum.MessageType`. */
 export type OutputKind = "print" | "info" | "warn" | "error" | "system";
 
+/** Where a line originated: `game` = LogService capture, `script` = a script-tool run. */
+export type OutputSource = "game" | "script";
+
 export interface OutputEntry {
   readonly clientId: string;
   readonly clientName: string | null;
@@ -16,6 +19,10 @@ export interface OutputEntry {
   readonly message: string;
   /** Epoch millis when the line was produced in-game (server clock if absent). */
   readonly at: number;
+  /** Where this line came from. Defaults to "game" for entries without an explicit source. */
+  readonly source: OutputSource;
+  /** When source === "script", the per-run token of the script that emitted this line. */
+  readonly scriptToken?: string | null;
 }
 
 export interface OutputLog {

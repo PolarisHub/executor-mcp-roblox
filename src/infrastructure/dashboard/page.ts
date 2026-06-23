@@ -427,6 +427,13 @@ export function renderDashboardPage(): string {
   .oline.k-info .om { color: var(--accent); } .oline.k-info .oc { background: var(--accent); }
   .oline.k-system .om { color: var(--accent-2, #57e6c9); } .oline.k-system .oc { background: var(--ok); }
   .oline .oclient { color: var(--faint); flex: none; }
+  .oline .osrc {
+    flex: none; font-size: 10px; padding: 0 5px; border-radius: 3px;
+    border: 1px solid var(--border); color: var(--faint); align-self: center;
+  }
+  .oline .osrc.src-script {
+    color: var(--accent); border-color: rgba(107,155,255,0.4); background: rgba(107,155,255,0.07);
+  }
 
   @media (max-width: 720px) {
     .tools-layout { grid-template-columns: 1fr; }
@@ -491,6 +498,12 @@ export function renderDashboardPage(): string {
   <section class="panel" id="panel-output">
     <div class="out-bar">
       <input class="search out-filter" id="out-filter" type="text" placeholder="Filter output…" autocomplete="off" />
+      <select class="out-btn" id="out-scope" title="Scope">
+        <option value="all">All output</option>
+        <option value="game">Game only</option>
+        <option value="script">Scripts only</option>
+        <option value="recent-script">Most recent script</option>
+      </select>
       <label class="out-toggle"><input type="checkbox" id="out-autoscroll" checked /> Auto-scroll</label>
       <span class="out-legend">
         <i class="ok"></i>print <i class="info"></i>info <i class="warn"></i>warn <i class="err"></i>error
@@ -546,7 +559,7 @@ export function renderDashboardPage(): string {
   };
 
   var state = null, tools = [], pollFails = 0, iconMap = {};
-  var outData = [], outFilter = "", outAutoscroll = true, outClearedAt = 0;
+  var outData = [], outFilter = "", outAutoscroll = true, outClearedAt = 0, outScope = "all";
   var activeTab = "clients", activeCat = "__all", query = "";
 
   // ---- explorer state ----
@@ -1249,6 +1262,23 @@ export function renderDashboardPage(): string {
     function p(n) { return (n < 10 ? "0" : "") + n; }
     return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
   }
+  function mostRecentScriptToken() {
+    for (var i = outData.length - 1; i >= 0; i--) {
+      if (outData[i].source === "script" && outData[i].scriptToken) return outData[i].scriptToken;
+    }
+    return null;
+  }
+  function inScope(e) {
+    if (outScope === "all") return true;
+    var src = e.source || "game";
+    if (outScope === "game") return src === "game";
+    if (outScope === "script") return src === "script";
+    if (outScope === "recent-script") {
+      var tok = mostRecentScriptToken();
+      return tok != null && e.scriptToken === tok;
+    }
+    return true;
+  }
   function renderOutput() {
     var el = byId("console");
     if (!el) return;
@@ -1257,11 +1287,15 @@ export function renderDashboardPage(): string {
     for (var i = 0; i < outData.length; i++) {
       var e = outData[i];
       if (e.at <= outClearedAt) continue;
+      if (!inScope(e)) continue;
       if (q && String(e.message).toLowerCase().indexOf(q) === -1) continue;
       var kind = e.kind || "print";
       var who = e.clientName ? '<span class="oclient">' + esc(e.clientName) + "</span>" : "";
+      var srcTag = e.source === "script"
+        ? '<span class="osrc src-script" title="' + esc(e.scriptToken || "") + '">script</span>'
+        : "";
       rows.push('<div class="oline k-' + esc(kind) + '"><span class="ot">' + fmtClock(e.at) +
-        '</span><span class="oc"></span>' + who + '<span class="om">' + esc(e.message) + "</span></div>");
+        '</span><span class="oc"></span>' + who + srcTag + '<span class="om">' + esc(e.message) + "</span></div>");
     }
     byId("out-count").textContent = rows.length + " lines";
     if (!rows.length) {
@@ -1284,6 +1318,7 @@ export function renderDashboardPage(): string {
     }).catch(function () {});
   }
   byId("out-filter").addEventListener("input", function (e) { outFilter = e.target.value; renderOutput(); });
+  byId("out-scope").addEventListener("change", function (e) { outScope = e.target.value; renderOutput(); });
   byId("out-autoscroll").addEventListener("change", function (e) {
     outAutoscroll = e.target.checked;
     if (outAutoscroll) renderOutput();
