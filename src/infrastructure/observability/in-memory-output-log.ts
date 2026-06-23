@@ -10,16 +10,24 @@ export class InMemoryOutputLog implements OutputLog {
   private readonly capacity: number;
   private head = 0;
   private size = 0;
+  /** Optional sink called after every record (used by the live dashboard WS). */
+  private onRecord: ((entry: OutputEntry) => void) | null = null;
 
   constructor(capacity = 4000) {
     this.capacity = Math.max(1, capacity);
     this.buffer = new Array<OutputEntry>(this.capacity);
   }
 
+  /** Subscribe to records as they happen. Pass null to unsubscribe. */
+  setOnRecord(fn: ((entry: OutputEntry) => void) | null): void {
+    this.onRecord = fn;
+  }
+
   record(entry: OutputEntry): void {
     this.buffer[this.head] = entry;
     this.head = (this.head + 1) % this.capacity;
     this.size = Math.min(this.size + 1, this.capacity);
+    if (this.onRecord) this.onRecord(entry);
   }
 
   recent(limit: number, clientId?: string): readonly OutputEntry[] {

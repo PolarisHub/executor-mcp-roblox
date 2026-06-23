@@ -1294,6 +1294,46 @@ export function renderDashboardPage(): string {
     byId("t-output").textContent = 0;
   });
 
+  // Live updates over WebSocket: output streams in as it happens, and
+  // activity/client-change events nudge the existing state poll so it refreshes
+  // immediately rather than waiting for the next 2s tick. The poll remains as
+  // a resilience fallback if the WS drops.
+  var ws = null, wsBackoff = 1000, wsRefreshTimer = null;
+  function nudgeState() {
+    if (wsRefreshTimer) return;
+    wsRefreshTimer = setTimeout(function () { wsRefreshTimer = null; pollState(); }, 120);
+  }
+  function openWs() {
+    try {
+      var proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(proto + "://" + location.host + "/ws/dashboard");
+    } catch (e) { setTimeout(openWs, wsBackoff); wsBackoff = Math.min(wsBackoff * 2, 15000); return; }
+    ws.onopen = function () { wsBackoff = 1000; };
+    ws.onmessage = function (ev) {
+      var msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || !msg.type) return;
+      if (msg.type === "output") {
+        var added = msg.entries || [];
+        if (!added.length) return;
+        outData = outData.concat(added).slice(-1500);
+        var visible = 0;
+        for (var i = 0; i < outData.length; i++) { if (outData[i].at > outClearedAt) visible++; }
+        byId("t-output").textContent = visible;
+        if (activeTab === "output") renderOutput();
+      } else if (msg.type === "activity" || msg.type === "client-change") {
+        nudgeState();
+      }
+    };
+    ws.onclose = function () {
+      ws = null;
+      setTimeout(openWs, wsBackoff);
+      wsBackoff = Math.min(wsBackoff * 2, 15000);
+    };
+    ws.onerror = function () { try { ws && ws.close(); } catch (e) {} };
+  }
+  openWs();
+
   loadIcons();
   loadTools();
   pollState();

@@ -15,8 +15,15 @@ export class InMemoryActivityLog implements ActivityLog {
   private errors = 0;
   /** Per-tool lifetime counters (runs, errors). Unbounded by ring capacity. */
   private readonly perTool = new Map<string, { runs: number; errors: number }>();
+  /** Optional sink called after every record (used by the live dashboard WS). */
+  private onRecord: ((record: ActivityRecord) => void) | null = null;
 
   constructor(private readonly capacity = 250) {}
+
+  /** Subscribe to records as they happen. Pass null to unsubscribe. */
+  setOnRecord(fn: ((record: ActivityRecord) => void) | null): void {
+    this.onRecord = fn;
+  }
 
   record(record: ActivityRecord): void {
     this.total += 1;
@@ -27,6 +34,7 @@ export class InMemoryActivityLog implements ActivityLog {
     stats.runs += 1;
     if (record.outcome === "error") stats.errors += 1;
     this.perTool.set(record.toolName, stats);
+    if (this.onRecord) this.onRecord(record);
   }
 
   recent(limit: number): readonly ActivityRecord[] {

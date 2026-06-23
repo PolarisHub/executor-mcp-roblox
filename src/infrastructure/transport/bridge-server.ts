@@ -20,6 +20,9 @@ import type {
   ServerMessage,
 } from "../../domain/protocol/messages.js";
 import { ClientId, RequestId, UserId } from "../../domain/shared/ids.js";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
+
 import type { ClientAdmin } from "../../application/ports/client-admin.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { Clock } from "../../application/ports/clock.js";
@@ -104,12 +107,24 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
   private readonly metrics: Metrics;
   private readonly output?: OutputLog;
   private scriptBridge: ScriptBridge | null = null;
+  /** Optional sink for client connect/disconnect events (used by the dashboard WS). */
+  private onClientChange: ((action: "connect" | "disconnect", id: string) => void) | null = null;
+
+  /** Subscribe to client connect/disconnect events. Pass null to unsubscribe. */
+  setOnClientChange(fn: ((action: "connect" | "disconnect", id: string) => void) | null): void {
+    this.onClientChange = fn;
+  }
 
   private readonly connections = new Map<ClientId, Connection>();
   private readonly wss: WebSocketServer;
   private httpServer: HttpServer | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private started = false;
+  /** Extra WebSocket paths the composition root has registered (e.g. /ws/dashboard). */
+  private readonly extraUpgrades = new Map<
+    string,
+    (request: IncomingMessage, socket: Duplex, head: Buffer) => void
+  >();
 
   constructor(deps: BridgeDeps) {
     this.config = deps.config;
@@ -172,13 +187,18 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
           return;
         }
         const pathname = new URL(url, `http://${request.headers.host ?? "localhost"}`).pathname;
-        if (pathname !== "/bridge") {
-          socket.destroy();
+        if (pathname === "/bridge") {
+          this.wss.handleUpgrade(request, socket, head, (ws) => {
+            this.wss.emit("connection", ws, request);
+          });
           return;
         }
-        this.wss.handleUpgrade(request, socket, head, (ws) => {
-          this.wss.emit("connection", ws, request);
-        });
+        const extra = this.extraUpgrades.get(pathname);
+        if (extra) {
+          extra(request, socket, head);
+          return;
+        }
+        socket.destroy();
       });
     });
 
@@ -221,6 +241,18 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
 
   get(clientId: ClientId): RobloxClient | undefined {
     return this.connections.get(clientId)?.client;
+  }
+
+  /**
+   * Register an additional WebSocket upgrade handler at a specific path on the
+   * same HTTP server. Used by the dashboard to mount `/ws/dashboard` for live
+   * push without spinning up a second port.
+   */
+  addUpgrade(
+    path: string,
+    handler: (request: IncomingMessage, socket: Duplex, head: Buffer) => void,
+  ): void {
+    this.extraUpgrades.set(path, handler);
   }
 
   /** Wire the bridge's RPC routing after construction (breaks the dep cycle). */
@@ -427,6 +459,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
 
     this.metrics.increment("bridge.clients.connected");
     this.metrics.gauge("bridge.clients", this.connections.size);
+    if (this.onClientChange) this.onClientChange("connect", id);
     this.logger.info(
       { clientId: id, username: client.username, executor: client.executor },
       "connector registered",
@@ -589,6 +622,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       return;
     }
     this.connections.delete(connection.id);
+    if (this.onClientChange) this.onClientChange("disconnect", connection.id);
 
     this.rejectAllPending(connection, reason);
 

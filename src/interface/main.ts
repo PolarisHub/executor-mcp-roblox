@@ -17,6 +17,8 @@ import { loadConfig } from "../infrastructure/config/load-config.js";
 import { ChildProcessShell } from "../infrastructure/host/child-process-shell.js";
 import { SandboxedHostFileSystem } from "../infrastructure/host/sandboxed-file-system.js";
 import { Dashboard } from "../infrastructure/dashboard/dashboard.js";
+import { DashboardEventBus } from "../infrastructure/dashboard/dashboard-events.js";
+import { DashboardWebSocketServer } from "../infrastructure/dashboard/dashboard-ws.js";
 import { McpAdapter } from "../infrastructure/mcp/mcp-adapter.js";
 import { HealthReporter } from "../infrastructure/observability/health.js";
 import { InMemoryActivityLog } from "../infrastructure/observability/in-memory-activity-log.js";
@@ -93,6 +95,21 @@ function compose(): Application {
   const activity = new InMemoryActivityLog();
   // Backs the `script` tool's in-game `mcp.<tool>()` bridge.
   const scriptBridge = new ScriptBridge();
+
+  // Shared event bus + WS push channel for live dashboard updates. Subscribers
+  // get output/activity/client-change events as JSON frames over /ws/dashboard.
+  const eventBus = new DashboardEventBus();
+  if (output instanceof InMemoryOutputLog) {
+    output.setOnRecord((entry) => eventBus.emitOutput([entry]));
+  }
+  if (activity instanceof InMemoryActivityLog) {
+    activity.setOnRecord((record) => eventBus.emitActivity(record));
+  }
+  bridge.setOnClientChange((action, clientId) => eventBus.emitClientChange(action, clientId));
+  if (config.dashboard.enabled) {
+    const ws = new DashboardWebSocketServer({ logger, bus: eventBus });
+    bridge.addUpgrade("/ws/dashboard", (req, sock, head) => ws.handleUpgrade(req, sock, head));
+  }
 
   // The dashboard (when enabled) claims `/` and the `/api/*` read endpoints.
   if (config.dashboard.enabled) {
