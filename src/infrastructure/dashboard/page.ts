@@ -426,6 +426,24 @@ export function renderDashboardPage(): string {
     background: var(--panel-2); color: var(--dim); font-size: 10.5px;
   }
 
+  /* ---- spy tab ---- */
+  .spy-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .spy-bar .search { flex: 1; margin-bottom: 0; }
+  .spy-row .smethod { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 10.5px; }
+  .spy-row .smethod.fire { background: rgba(94,194,110,0.10); color: var(--ok); border: 1px solid rgba(94,194,110,0.3); }
+  .spy-row .smethod.invoke { background: rgba(107,155,255,0.10); color: var(--accent); border: 1px solid rgba(107,155,255,0.35); }
+  .spy-row .smethod.blocked { background: rgba(226,92,84,0.10); color: var(--err); border: 1px solid rgba(226,92,84,0.35); }
+  .spy-row .spath { font-family: var(--mono); font-size: 12px; }
+  .spy-row .sargs { font-family: var(--mono); font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; display: inline-block; vertical-align: middle; }
+  .spy-row .scopy {
+    background: none; border: 1px solid transparent; padding: 3px 7px; border-radius: 4px;
+    color: var(--faint); font: inherit; font-size: 11px; cursor: pointer; opacity: 0;
+    transition: opacity .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .spy-row:hover .scopy { opacity: 1; }
+  .spy-row .scopy:hover { color: var(--accent); border-color: rgba(107,155,255,0.35); }
+  .spy-row .scopy.copied { color: var(--ok); border-color: rgba(94,194,110,0.4); }
+
   .out-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .out-filter { flex: 1; margin-bottom: 0; }
   .out-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); white-space: nowrap; cursor: pointer; }
@@ -502,6 +520,7 @@ export function renderDashboardPage(): string {
   <button data-tab="activity">Activity<span class="count" id="t-activity">0</span></button>
   <button data-tab="explorer">Explorer</button>
   <button data-tab="brief">Brief</button>
+  <button data-tab="spy">Spy<span class="count" id="t-spy">0</span></button>
   <button data-tab="output">Output<span class="count" id="t-output">0</span></button>
 </nav>
 
@@ -524,6 +543,17 @@ export function renderDashboardPage(): string {
   <section class="panel" id="panel-explorer"></section>
 
   <section class="panel" id="panel-brief"></section>
+
+  <section class="panel" id="panel-spy">
+    <div class="spy-bar">
+      <input class="search" id="spy-filter" type="text" placeholder="Filter by remote / method / args…" autocomplete="off" />
+      <label class="out-toggle"><input type="checkbox" id="spy-autoref" checked /> Auto-refresh</label>
+      <span class="count" id="spy-count"></span>
+      <button class="out-btn" id="spy-refresh">Refresh</button>
+      <button class="out-btn" id="spy-clear">Clear buffer</button>
+    </div>
+    <div id="spy-body"></div>
+  </section>
 
   <section class="panel" id="panel-output">
     <div class="out-bar">
@@ -634,6 +664,7 @@ export function renderDashboardPage(): string {
     if (tab === "explorer") renderExplorer();
     if (tab === "output") renderOutput();
     if (tab === "brief") renderBrief();
+    if (tab === "spy") renderSpy();
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -1309,6 +1340,102 @@ export function renderDashboardPage(): string {
     }).catch(function () {});
   }
 
+  // ---- spy tab ----
+  var spyState = { clientId: null, data: null, err: null, filter: "", autoRefresh: true };
+  function spyArgsPreview(args) {
+    if (!Array.isArray(args)) return "";
+    try { return JSON.stringify(args).slice(0, 240); }
+    catch (e) { return "<unencodable>"; }
+  }
+  function spySnippetFor(entry) {
+    // The fire-remote tool spec lets us reproduce a captured call as a one-liner.
+    var path = entry.remote || "";
+    var args = Array.isArray(entry.args) ? entry.args : [];
+    var argsJson;
+    try { argsJson = JSON.stringify(args); }
+    catch (e) { argsJson = "[]"; }
+    return 'mcp.fireRemote({ path = "' + path.replace(/"/g, '\\"') + '", args = ' + argsJson + ' })';
+  }
+  function renderSpy() {
+    var el = byId("panel-spy");
+    if (!state) { el.innerHTML = ""; return; }
+    var clientId = (exp && exp.clientId) || (state.clients[0] && state.clients[0].clientId) || null;
+    if (spyState.clientId !== clientId) {
+      spyState.clientId = clientId; spyState.data = null; spyState.err = null;
+    }
+    if (!clientId) {
+      byId("spy-body").innerHTML = '<div class="empty"><div class="h">No client connected</div></div>';
+      byId("spy-count").textContent = "";
+      return;
+    }
+    if (!spyState.data && !spyState.err) loadSpyLogs(clientId);
+    var d = spyState.data;
+    var body = byId("spy-body");
+    if (spyState.err) {
+      body.innerHTML = '<div class="err-msg">' + esc(spyState.err) + "</div>";
+      return;
+    }
+    if (!d) {
+      body.innerHTML = '<div class="loading"><span class="spin"></span>Loading spy buffer…</div>';
+      return;
+    }
+    if (d.notRunning) {
+      body.innerHTML = '<div class="empty"><div class="h">Remote spy is not installed</div>' +
+        '<div class="s">Run <span class="mono">ensure-remote-spy</span> via your MCP client to start capturing remote calls.</div></div>';
+      byId("spy-count").textContent = "";
+      byId("t-spy").textContent = 0;
+      return;
+    }
+    if (d.error) {
+      body.innerHTML = '<div class="err-msg">' + esc(d.error) + "</div>";
+      return;
+    }
+    var logs = d.logs || [];
+    byId("t-spy").textContent = d.count || 0;
+    var q = spyState.filter.toLowerCase();
+    var rows = logs.map(function (e) {
+      if (q) {
+        var hay = (String(e.remote || "") + " " + String(e.method || "") + " " + spyArgsPreview(e.args)).toLowerCase();
+        if (hay.indexOf(q) === -1) return "";
+      }
+      var meth = String(e.method || "fire").toLowerCase();
+      var label = e.blocked ? "blocked" : (meth.indexOf("invoke") !== -1 ? "invoke" : "fire");
+      var snippet = spySnippetFor(e);
+      var when = e.t ? relTime(e.t * (e.t < 1e12 ? 1000 : 1)) : "—";
+      return '<tr class="spy-row">' +
+        '<td class="faint num">' + esc(when) + "</td>" +
+        '<td><span class="smethod ' + label + '">' + esc(label) + "</span></td>" +
+        '<td><span class="spath">' + esc(String(e.remote || "—")) + "</span></td>" +
+        '<td><span class="sargs" title="' + esc(spyArgsPreview(e.args)) + '">' + esc(spyArgsPreview(e.args)) + "</span></td>" +
+        '<td class="num muted">' + (e.argCount || 0) + (e.argsTruncated ? "+" : "") + "</td>" +
+        '<td style="text-align:right"><button class="scopy" data-copy="' + esc(snippet) + '" title="Copy as mcp.fireRemote">copy</button></td>" +
+        "</tr>";
+    }).filter(Boolean).join("");
+    byId("spy-count").textContent = (logs.length || 0) + " shown / " + (d.count || 0) + " buffered" + (d.truncated ? " (truncated)" : "");
+    body.innerHTML = rows
+      ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Kind</th><th>Remote</th><th>Args</th><th>#</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+      : '<div class="empty"><div class="h">No matching captures</div></div>';
+  }
+  function loadSpyLogs(clientId) {
+    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&limit=300")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (spyState.clientId !== clientId) return;
+        if (data && data.error) { spyState.err = data.error; spyState.data = null; }
+        else { spyState.data = data; spyState.err = null; }
+        if (activeTab === "spy") renderSpy();
+      })
+      .catch(function () {
+        if (spyState.clientId !== clientId) return;
+        spyState.err = "Request failed.";
+        renderSpy();
+      });
+  }
+  setInterval(function () {
+    if (activeTab !== "spy" || !spyState.autoRefresh || !spyState.clientId) return;
+    loadSpyLogs(spyState.clientId);
+  }, 1500);
+
   // ---- brief tab ----
   var briefState = { clientId: null, summary: null, values: null, valuesLoading: false, summaryErr: null, valuesErr: null };
   function fmtNum(v) { if (typeof v !== "number") return esc(String(v)); return v.toLocaleString(); }
@@ -1503,6 +1630,25 @@ export function renderDashboardPage(): string {
       if (activeTab === "output") renderOutput();
     }).catch(function () {});
   }
+  byId("spy-filter").addEventListener("input", function (e) { spyState.filter = e.target.value; renderSpy(); });
+  byId("spy-autoref").addEventListener("change", function (e) { spyState.autoRefresh = e.target.checked; });
+  byId("spy-refresh").addEventListener("click", function () { if (spyState.clientId) loadSpyLogs(spyState.clientId); });
+  byId("spy-clear").addEventListener("click", function () {
+    if (!spyState.clientId) return;
+    fetch("/api/spy/clear?client=" + encodeURIComponent(spyState.clientId), { method: "POST" })
+      .then(function () { if (spyState.clientId) loadSpyLogs(spyState.clientId); })
+      .catch(function () {});
+  });
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest(".scopy");
+    if (!btn) return;
+    var v = btn.getAttribute("data-copy") || "";
+    if (!v || !navigator.clipboard) return;
+    navigator.clipboard.writeText(v).then(function () {
+      btn.classList.add("copied"); btn.textContent = "copied";
+      setTimeout(function () { btn.classList.remove("copied"); btn.textContent = "copy"; }, 900);
+    }).catch(function () {});
+  });
   byId("out-filter").addEventListener("input", function (e) { outFilter = e.target.value; renderOutput(); });
   byId("out-scope").addEventListener("change", function (e) { outScope = e.target.value; renderOutput(); });
   byId("out-autoscroll").addEventListener("change", function (e) {
