@@ -49,16 +49,28 @@ export default defineTool({
       .positive()
       .optional()
       .describe("Overall timeout for the whole script including nested tool calls (default 120000)."),
+    rpcBudget: z
+      .number()
+      .int()
+      .positive()
+      .max(10000)
+      .optional()
+      .describe(
+        "Max number of `mcp.*` tool calls this script can make through the bridge (default 500). " +
+          "Further calls reject with BUDGET_EXCEEDED so a runaway loop can't saturate the connection.",
+      ),
     threadContext: z.number().int().optional(),
   }),
-  async execute({ source, persistent, timeoutMs, threadContext }, ctx) {
+  async execute({ source, persistent, timeoutMs, rpcBudget, threadContext }, ctx) {
     if (!ctx.scripting) {
       return {
         data: { error: "The scripting bridge is not available on this server." },
         isError: true,
       };
     }
-    const { token, dispose } = ctx.scripting.mint();
+    const { token, dispose } = ctx.scripting.mint(
+      rpcBudget !== undefined ? { budget: rpcBudget } : undefined,
+    );
     try {
       const data = await ctx.runLuau(source, {
         timeoutMs: timeoutMs ?? 120000,

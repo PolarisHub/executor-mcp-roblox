@@ -9,7 +9,14 @@ interface Grant {
   readonly sessionId: SessionId;
   readonly sessionLabel: string;
   readonly clientId?: ClientId;
+  /** Max RPC calls this script may make through the bridge before further calls reject. */
+  readonly budget: number;
+  /** Running count of RPC calls served for this token. */
+  rpcCount: number;
 }
+
+/** Per-script RPC budget cap (configurable per mint call). */
+export const DEFAULT_SCRIPT_RPC_BUDGET = 500;
 
 export type ScriptRunResult =
   | { readonly ok: true; readonly data: unknown }
@@ -36,9 +43,16 @@ export class ScriptBridge {
     sessionId: SessionId,
     sessionLabel: string,
     clientId?: ClientId,
+    budget: number = DEFAULT_SCRIPT_RPC_BUDGET,
   ): { token: string; dispose: () => void } {
     const token = randomUUID();
-    this.grants.set(token, { sessionId, sessionLabel, ...(clientId ? { clientId } : {}) });
+    this.grants.set(token, {
+      sessionId,
+      sessionLabel,
+      ...(clientId ? { clientId } : {}),
+      budget: Math.max(1, Math.floor(budget)),
+      rpcCount: 0,
+    });
     return { token, dispose: () => void this.grants.delete(token) };
   }
 
@@ -50,6 +64,14 @@ export class ScriptBridge {
     if (toolName === "script") {
       return { ok: false, error: "script cannot call itself (mcp.script is disabled)" };
     }
+    if (grant.rpcCount >= grant.budget) {
+      return {
+        ok: false,
+        error: `script RPC budget exhausted (${grant.budget} calls used). Pass a larger { rpcBudget } to script or split into multiple runs.`,
+        code: "BUDGET_EXCEEDED",
+      };
+    }
+    grant.rpcCount += 1;
     try {
       const result = await this.invoker.invoke({
         toolName,

@@ -42,6 +42,20 @@ describe("ScriptBridge", () => {
     expect((await bridge.run(token, "get-players", {})).ok).toBe(false);
   });
 
+  it("rejects calls once the per-script RPC budget is exhausted", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+    const { token } = bridge.mint(SessionId("s1"), "label", undefined, 2);
+
+    expect((await bridge.run(token, "get-players", {})).ok).toBe(true);
+    expect((await bridge.run(token, "get-players", {})).ok).toBe(true);
+    const blocked = await bridge.run(token, "get-players", {});
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe("BUDGET_EXCEEDED");
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
   it("refuses to call the script tool itself (no recursion)", async () => {
     const bridge = new ScriptBridge();
     const invoke = vi.fn(async () => ({ data: {} }));

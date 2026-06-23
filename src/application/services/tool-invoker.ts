@@ -90,8 +90,13 @@ export class ToolInvoker {
       semantic: this.deps.semantic,
       scripting: {
         baseUrl: this.scriptBaseUrl(),
-        mint: () =>
-          this.deps.scriptBridge.mint(request.sessionId, request.sessionLabel, client?.id),
+        mint: (opts) =>
+          this.deps.scriptBridge.mint(
+            request.sessionId,
+            request.sessionLabel,
+            client?.id,
+            opts?.budget,
+          ),
       },
       runLuau: (source, options) => {
         if (!client) {

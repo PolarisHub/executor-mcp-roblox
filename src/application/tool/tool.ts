@@ -29,8 +29,8 @@ export interface LuauOptions {
 export interface ScriptingContext {
   /** Loopback base URL of this server, reachable from the executor's HTTP client. */
   readonly baseUrl: string;
-  /** Mint a one-shot token for the `/api/exec-tool` bridge; dispose when done. */
-  mint(): { token: string; dispose: () => void };
+  /** Mint a one-shot token for the bridge; dispose when done. */
+  mint(opts?: { budget?: number }): { token: string; dispose: () => void };
 }
 
 /** Per-call session controls handed to session-management tools. */
