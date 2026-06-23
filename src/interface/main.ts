@@ -117,7 +117,11 @@ function compose(): Application {
   }
   bridge.setOnClientChange((action, clientId) => eventBus.emitClientChange(action, clientId));
   if (config.dashboard.enabled) {
-    const ws = new DashboardWebSocketServer({ logger, bus: eventBus });
+    const ws = new DashboardWebSocketServer({
+      logger,
+      bus: eventBus,
+      expectedToken: config.bridge.authToken,
+    });
     bridge.addUpgrade("/ws/dashboard", (req, sock, head) => ws.handleUpgrade(req, sock, head));
   }
 

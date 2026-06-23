@@ -20,10 +20,12 @@ export class DashboardWebSocketServer {
   private readonly wss = new WebSocketServer({ noServer: true });
   private readonly logger: Logger;
   private readonly bus: DashboardEventBus;
+  private readonly expectedToken: string | null;
 
-  constructor(deps: { logger: Logger; bus: DashboardEventBus }) {
+  constructor(deps: { logger: Logger; bus: DashboardEventBus; expectedToken?: string | null }) {
     this.logger = deps.logger.child({ component: "dashboard-ws" });
     this.bus = deps.bus;
+    this.expectedToken = deps.expectedToken ?? null;
 
     this.wss.on("connection", (socket) => {
       const unsubscribe = this.bus.subscribe((event) => {
@@ -45,8 +47,26 @@ export class DashboardWebSocketServer {
 
   /** Called by the bridge's HTTP upgrade router for `/ws/dashboard`. */
   handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (this.expectedToken && !this.authorize(request)) {
+      // Reject the upgrade with 401 before completing the websocket handshake.
+      try {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      } finally {
+        socket.destroy();
+      }
+      return;
+    }
     this.wss.handleUpgrade(request, socket, head, (ws) => {
       this.wss.emit("connection", ws, request);
     });
+  }
+
+  private authorize(request: IncomingMessage): boolean {
+    const cookie = request.headers.cookie ?? "";
+    const m = /(?:^|;\s*)executor-mcp-token=([^;]+)/.exec(cookie);
+    if (m && decodeURIComponent(m[1]!) === this.expectedToken) return true;
+    const header = request.headers["x-executor-mcp-token"];
+    if (typeof header === "string" && header === this.expectedToken) return true;
+    return false;
   }
 }

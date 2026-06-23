@@ -46,6 +46,27 @@ export class Dashboard {
   }
 
   mount(app: Hono): void {
+    // Optional auth gate. When the bridge has an authToken configured, every
+    // dashboard route requires the same token via a session cookie or the
+    // initial /auth POST. Reading the token from the same env var as the
+    // bridge means operators configure once.
+    const expected = this.deps.config.bridge.authToken;
+    if (expected) {
+      this.mountAuth(app, expected);
+      app.use("/*", async (c, next) => {
+        const path = new URL(c.req.url).pathname;
+        if (path === "/auth" || path === "/login") return next();
+        const cookie = c.req.header("cookie") ?? "";
+        const got = /(?:^|;\s*)executor-mcp-token=([^;]+)/.exec(cookie);
+        if (got?.[1] === expected) return next();
+        // Allow header-based auth for programmatic clients.
+        if (c.req.header("x-executor-mcp-token") === expected) return next();
+        if (path.startsWith("/api/") || path.startsWith("/ws/")) {
+          return c.json({ error: "unauthorized" }, 401);
+        }
+        return c.html(renderLoginPage(), 401);
+      });
+    }
     app.get("/", (c) => c.html(renderDashboardPage()));
     app.get("/api/state", (c) => c.json(buildDashboardState(this.deps)));
     app.get("/api/tools", (c) => c.json(buildToolCatalog(this.deps.registry)));
@@ -288,4 +309,99 @@ export class Dashboard {
     app.get("/api/explore/properties", explore((id, p) => this.explorer.properties(id, p)));
     app.get("/api/explore/connections", explore((id, p) => this.explorer.connections(id, p)));
   }
+
+  /**
+   * Mount /auth (POST) and /login (GET) BEFORE the gate so the login flow
+   * itself doesn't 401. POST /auth validates the supplied token, sets an
+   * HttpOnly cookie, then 302s back to /.
+   */
+  private mountAuth(app: Hono, expected: string): void {
+    app.get("/login", (c) => c.html(renderLoginPage()));
+    app.post("/auth", async (c) => {
+      let body: { token?: unknown } | null = null;
+      const ct = c.req.header("content-type") ?? "";
+      try {
+        if (ct.includes("application/json")) {
+          body = (await c.req.json());
+        } else {
+          const form = await c.req.formData();
+          body = { token: form.get("token") };
+        }
+      } catch {
+        return c.json({ ok: false, error: "invalid body" }, 400);
+      }
+      const provided = typeof body?.token === "string" ? body.token : "";
+      if (provided !== expected) {
+        if (ct.includes("application/json")) return c.json({ ok: false, error: "bad token" }, 401);
+        return c.html(renderLoginPage("Wrong token, try again."), 401);
+      }
+      // 30d HttpOnly cookie. SameSite=Strict so it never leaks cross-origin.
+      c.header(
+        "Set-Cookie",
+        `executor-mcp-token=${encodeURIComponent(expected)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${60 * 60 * 24 * 30}`,
+      );
+      if (ct.includes("application/json")) return c.json({ ok: true });
+      return c.redirect("/", 302);
+    });
+  }
+}
+
+/** Minimal sign-in HTML — same dark theme, no JS framework. */
+function renderLoginPage(message?: string): string {
+  const msg = message ? `<div style="color:#e25c54;margin-bottom:12px;font-size:13px">${escapeHtml(message)}</div>` : "";
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roblox Executor MCP — Sign in</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #141414; color: #e6e6e6;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: grid; place-items: center;
+  }
+  .card {
+    background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 12px;
+    padding: 26px 28px 24px; width: 320px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  h1 { margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  p.sub { margin: 0 0 16px; color: #6b6b6b; font-size: 12.5px; }
+  input[type="password"] {
+    width: 100%; box-sizing: border-box;
+    background: #101012; border: 1px solid #2a2a2a; border-radius: 8px;
+    color: #e6e6e6; font: inherit; padding: 9px 12px; outline: none;
+    margin-bottom: 12px;
+  }
+  input[type="password"]:focus { border-color: #3a3a3a; }
+  button {
+    appearance: none; background: #6b9bff; border: 1px solid #6b9bff; color: #fff;
+    font: inherit; font-weight: 500; padding: 9px 14px; border-radius: 8px; cursor: pointer;
+    width: 100%;
+  }
+  button:hover { background: #5a8cf7; }
+</style>
+</head><body>
+<form class="card" method="POST" action="/auth">
+  <h1>Roblox Executor MCP</h1>
+  <p class="sub">Enter the bridge token to access the dashboard.</p>
+  ${msg}
+  <input type="password" name="token" autocomplete="off" autofocus placeholder="ROBLOX_MCP_BRIDGE_TOKEN" />
+  <button type="submit">Sign in</button>
+</form>
+</body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
 }
