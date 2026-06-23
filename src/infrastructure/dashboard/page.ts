@@ -560,6 +560,19 @@ export function renderDashboardPage(): string {
 
   var state = null, tools = [], pollFails = 0, iconMap = {};
   var outData = [], outFilter = "", outAutoscroll = true, outClearedAt = 0, outScope = "all";
+  // Live activity log: WS-pushed records prepend here; state polls merge in
+  // anything older we don't have yet. renderActivity reads from this.
+  var liveActivity = [], liveActivityTotal = 0, liveActivityErrors = 0;
+  function activityKey(r) { return r.at + ":" + r.toolName + ":" + (r.sessionId || ""); }
+  function ingestActivityRecord(r, prepend) {
+    if (!r || !r.toolName) return;
+    var key = activityKey(r);
+    for (var i = 0; i < liveActivity.length; i++) {
+      if (activityKey(liveActivity[i]) === key) return;
+    }
+    if (prepend) liveActivity.unshift(r); else liveActivity.push(r);
+    if (liveActivity.length > 200) liveActivity.length = 200;
+  }
   var activeTab = "clients", activeCat = "__all", query = "";
 
   // ---- explorer state ----
@@ -733,8 +746,9 @@ export function renderDashboardPage(): string {
   // ---- activity ----
   function renderActivity() {
     var el = byId("panel-activity");
-    if (!state) { el.innerHTML = ""; return; }
-    var a = state.activity.recent;
+    if (!liveActivity.length && !state) { el.innerHTML = ""; return; }
+    // Newest-first, capped to 80 rows on screen.
+    var a = liveActivity.slice().sort(function (x, y) { return y.at - x.at; }).slice(0, 80);
     if (!a.length) {
       el.innerHTML = '<div class="table-wrap"><div class="empty"><div class="h">No activity yet</div>' +
         '<div class="s">Tool calls will appear here as they happen.</div></div></div>';
@@ -1237,6 +1251,14 @@ export function renderDashboardPage(): string {
       state = data; pollFails = 0;
       uptimeBase = data.server.uptimeMs; uptimeAt = Date.now();
       setStatus("on", "Live");
+      // Reconcile the live activity feed with the server's authoritative tail
+      // (counters always win from the server, records merge by key).
+      if (data && data.activity) {
+        liveActivityTotal = data.activity.total;
+        liveActivityErrors = data.activity.errors;
+        var recent = data.activity.recent || [];
+        for (var i = 0; i < recent.length; i++) ingestActivityRecord(recent[i], false);
+      }
       renderAll();
       tickUptime();
     }).catch(function () {
@@ -1356,7 +1378,18 @@ export function renderDashboardPage(): string {
         for (var i = 0; i < outData.length; i++) { if (outData[i].at > outClearedAt) visible++; }
         byId("t-output").textContent = visible;
         if (activeTab === "output") renderOutput();
-      } else if (msg.type === "activity" || msg.type === "client-change") {
+      } else if (msg.type === "activity") {
+        if (msg.record) {
+          ingestActivityRecord(msg.record, true);
+          liveActivityTotal += 1;
+          if (msg.record.outcome === "error") liveActivityErrors += 1;
+          byId("s-calls").textContent = liveActivityTotal;
+          byId("s-errs").textContent = liveActivityErrors;
+          byId("t-activity").textContent = liveActivityTotal;
+          if (activeTab === "activity") renderActivity();
+        }
+        nudgeState();
+      } else if (msg.type === "client-change") {
         nudgeState();
       }
     };
