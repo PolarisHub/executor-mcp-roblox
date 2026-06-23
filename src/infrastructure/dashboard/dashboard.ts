@@ -10,6 +10,7 @@ import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
 import { ExplorerService } from "./dashboard-explorer.js";
 import { renderDashboardPage } from "./page.js";
+import { zodToJsonSchema } from "./zod-json-schema.js";
 
 /** Roblox Studio's `ClassImages.png` sprite strip, resolved relative to this module. */
 const CLASS_ICONS_PNG = join(dirname(fileURLToPath(import.meta.url)), "../../../assets/class-icons.png");
@@ -32,6 +33,19 @@ export class Dashboard {
     app.get("/", (c) => c.html(renderDashboardPage()));
     app.get("/api/state", (c) => c.json(buildDashboardState(this.deps)));
     app.get("/api/tools", (c) => c.json(buildToolCatalog(this.deps.registry)));
+    app.get("/api/tools/schema", (c) =>
+      c.json(
+        this.deps.registry.list().map((tool) => ({
+          name: tool.name,
+          title: tool.title,
+          description: tool.description,
+          category: tool.category,
+          mutatesState: tool.mutatesState ?? false,
+          requiresClient: tool.requiresClient !== false,
+          inputSchema: zodToJsonSchema(tool.input),
+        })),
+      ),
+    );
     app.get("/api/class-icons", (c) => c.json(CLASS_ICON_INDEX));
 
     app.get("/api/output", (c) => {
