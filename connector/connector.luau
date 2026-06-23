@@ -534,16 +534,30 @@ local function runEval(op)
 		-- In script-tool mode, a runtime error is still returned as a regular value
 		-- so the AI sees its captured output alongside the failure.
 		if scriptOutput ~= nil then
-			local _, packed = pcall(encodeForJson, { error = "runtime error: " .. tostring(runErr), output = scriptOutput })
-			return { ok = true, value = packed }
+			local pkOk, pkValue = pcall(encodeForJson, { error = "runtime error: " .. tostring(runErr), output = scriptOutput })
+			if pkOk then
+				return { ok = true, value = pkValue }
+			end
+			-- Encode failed (e.g. weird output entry): keep error path so the AI
+			-- sees the original failure rather than the encoder's complaint.
+			return { ok = false, error = "runtime error: " .. tostring(runErr), kind = "runtime" }
 		end
 		return { ok = false, error = tostring(runErr), kind = "runtime" }
 	end
 
 	-- Script-tool mode: package the user's return value with the captured output.
 	if scriptOutput ~= nil then
-		local _, packed = pcall(encodeForJson, { result = firstValue, output = scriptOutput })
-		return { ok = true, value = packed }
+		local pkOk, pkValue = pcall(encodeForJson, { result = firstValue, output = scriptOutput })
+		if pkOk then
+			return { ok = true, value = pkValue }
+		end
+		-- Result wasn't encodable; retry with just the output so the AI still
+		-- gets its captured prints rather than a confusing string-of-error.
+		local fbOk, fbValue = pcall(encodeForJson, { output = scriptOutput, encodeError = tostring(pkValue) })
+		if fbOk then
+			return { ok = true, value = fbValue }
+		end
+		return { ok = false, error = "failed to encode result: " .. tostring(pkValue), kind = "runtime" }
 	end
 
 	-- Encode the captured value defensively: a bad encoder/serializer must not
