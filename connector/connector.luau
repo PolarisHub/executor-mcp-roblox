@@ -364,12 +364,22 @@ end
 
 -- Block until the server returns an rpc-result for this id, or timeout. Returns
 -- the result table { ok, data?, error? } or { ok=false, error=<reason> } on miss.
+-- If the bridge disconnects mid-call, our pending entry can be wiped from under
+-- us; we re-read `pendingRpc[id]` each tick and treat a nil entry as disconnect.
 local function awaitRpc(id, timeoutMs)
 	local deadline = os.clock() + (timeoutMs or 30000) / 1000
-	while not pendingRpc[id].done and os.clock() < deadline do
+	while os.clock() < deadline do
+		local pending = pendingRpc[id]
+		if pending == nil then
+			return { ok = false, error = "bridge disconnected mid-call" }
+		end
+		if pending.done then break end
 		task.wait(0.01)
 	end
 	local pending = pendingRpc[id]
+	if pending == nil then
+		return { ok = false, error = "bridge disconnected mid-call" }
+	end
 	pendingRpc[id] = nil
 	if not pending.done then
 		return { ok = false, error = string.format("mcp call timed out after %dms", timeoutMs or 30000) }
