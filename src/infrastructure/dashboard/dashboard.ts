@@ -203,6 +203,34 @@ export class Dashboard {
       }
     });
 
+    app.post("/api/script/run", async (c) => {
+      let body: {
+        clientId?: unknown;
+        source?: unknown;
+        persistent?: unknown;
+        timeoutMs?: unknown;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const clientId = typeof body.clientId === "string" ? body.clientId : "";
+      const source = typeof body.source === "string" ? body.source : "";
+      if (!clientId) return c.json({ error: "body.clientId is required" }, 400);
+      if (!source) return c.json({ error: "body.source is required" }, 400);
+      try {
+        const data = await this.playbookSvc.runSource(source, clientId, {
+          ...(typeof body.persistent === "boolean" ? { persistent: body.persistent } : {}),
+          ...(typeof body.timeoutMs === "number" ? { timeoutMs: body.timeoutMs } : {}),
+        });
+        return c.json({ ok: true, data });
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ ok: false, error: err.message, code: err.code }, 502);
+      }
+    });
+
     app.get("/api/spy/logs", async (c) => {
       const clientId = c.req.query("client") ?? "";
       if (!clientId) return c.json({ error: "missing ?client" }, 400);

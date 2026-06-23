@@ -479,6 +479,44 @@ export function renderDashboardPage(): string {
   }
   .pb-runres.err { border-color: rgba(226,92,84,0.35); color: var(--err); }
 
+  /* ---- repl tab ---- */
+  .repl-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .repl-bar .sec { margin: 0; }
+  .repl-bar #repl-client { font-size: 12px; }
+  .repl-bar #repl-hint { font-size: 11px; color: var(--faint); }
+  .repl-bar kbd {
+    font-family: var(--mono); font-size: 10.5px; padding: 0 4px;
+    border: 1px solid var(--border); border-radius: 3px; background: var(--panel-2); color: var(--dim);
+  }
+  .repl-editor-wrap { position: relative; }
+  .repl-src {
+    width: 100%; min-height: 220px; max-height: 50vh; resize: vertical;
+    background: #101012; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--mono); font-size: 13px; padding: 10px 12px; outline: none;
+    line-height: 1.55;
+  }
+  .repl-src:focus { border-color: var(--border-2); }
+  .repl-ac {
+    position: absolute; min-width: 220px; max-height: 240px; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border-2); border-radius: 7px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4); display: none; z-index: 50;
+  }
+  .repl-ac.show { display: block; }
+  .repl-ac-item {
+    padding: 6px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--dim);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .repl-ac-item:hover, .repl-ac-item.active { background: var(--panel-2); color: var(--text); }
+  .repl-ac-item .at { color: var(--accent); }
+  .repl-ac-item .desc { margin-left: auto; color: var(--faint); font-family: var(--font); font-size: 11px; max-width: 280px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  #repl-result {
+    margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); font-family: var(--mono); font-size: 12px; color: var(--dim);
+    white-space: pre-wrap; max-height: 320px; overflow: auto; display: none;
+  }
+  #repl-result.show { display: block; }
+  #repl-result.err { border-color: rgba(226,92,84,0.35); color: var(--err); }
+
   /* ---- spy tab ---- */
   .spy-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .spy-bar .search { flex: 1; margin-bottom: 0; }
@@ -575,6 +613,7 @@ export function renderDashboardPage(): string {
   <button data-tab="brief">Brief</button>
   <button data-tab="spy">Spy<span class="count" id="t-spy">0</span></button>
   <button data-tab="playbooks">Playbooks<span class="count" id="t-playbooks">0</span></button>
+  <button data-tab="repl">REPL</button>
   <button data-tab="output">Output<span class="count" id="t-output">0</span></button>
 </nav>
 
@@ -609,6 +648,24 @@ export function renderDashboardPage(): string {
       </aside>
       <div class="pb-pane" id="pb-pane"></div>
     </div>
+  </section>
+
+  <section class="panel" id="panel-repl">
+    <div class="repl-bar">
+      <span class="sec">REPL</span>
+      <span class="muted" id="repl-client">No client selected</span>
+      <span class="count" id="repl-hint" style="margin-left:auto">type <kbd>mcp.</kbd> for autocomplete · <kbd>Ctrl+Enter</kbd> to run</span>
+      <button class="out-btn primary" id="repl-run">Run on selected client</button>
+      <button class="out-btn" id="repl-clear">Clear</button>
+    </div>
+    <div class="repl-editor-wrap">
+      <textarea class="src repl-src" id="repl-src" spellcheck="false" placeholder="-- Luau, with mcp.* available
+local p = mcp.getPlayers()
+print(#p .. ' players')
+return p"></textarea>
+      <div class="repl-ac" id="repl-ac"></div>
+    </div>
+    <div id="repl-result"></div>
   </section>
 
   <section class="panel" id="panel-spy">
@@ -733,6 +790,7 @@ export function renderDashboardPage(): string {
     if (tab === "brief") renderBrief();
     if (tab === "spy") renderSpy();
     if (tab === "playbooks") renderPlaybooks();
+    if (tab === "repl") renderRepl();
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -1407,6 +1465,156 @@ export function renderDashboardPage(): string {
       if (activeTab === "explorer" && exp.clientId) renderExplorer();
     }).catch(function () {});
   }
+
+  // ---- repl tab ----
+  var replState = { running: false, last: null, lastErr: null, acIndex: 0, acItems: [] };
+  function kebabToCamel(s) {
+    return s.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+  }
+  function replSelectedClient() {
+    return (exp && exp.clientId) || (state && state.clients[0] && state.clients[0].clientId) || null;
+  }
+  function renderRepl() {
+    var cid = replSelectedClient();
+    var label = "No client selected";
+    if (cid && state) {
+      var c = state.clients.find(function (x) { return x.clientId === cid; });
+      if (c) label = "Target: " + (c.displayName || c.username || c.clientId.slice(0, 8));
+    }
+    var ce = byId("repl-client"); if (ce) ce.textContent = label;
+    renderReplResult();
+  }
+  function renderReplResult() {
+    var el = byId("repl-result");
+    if (!el) return;
+    if (replState.running) {
+      el.classList.add("show"); el.classList.remove("err");
+      el.textContent = "Running…";
+      return;
+    }
+    if (replState.lastErr) {
+      el.classList.add("show", "err");
+      el.textContent = replState.lastErr;
+      return;
+    }
+    if (replState.last !== null) {
+      el.classList.add("show"); el.classList.remove("err");
+      try { el.textContent = JSON.stringify(replState.last, null, 2); }
+      catch (e) { el.textContent = String(replState.last); }
+      return;
+    }
+    el.classList.remove("show", "err");
+    el.textContent = "";
+  }
+  // Autocomplete: when the textarea ends with mcp.<partial>, surface a
+  // filtered list of tool names from /api/tools and let Tab/Enter insert.
+  function replAutocomplete() {
+    var ta = byId("repl-src");
+    var ac = byId("repl-ac");
+    if (!ta || !ac) return;
+    var pos = ta.selectionStart;
+    var head = ta.value.slice(0, pos);
+    var m = new RegExp("mcp\\.([A-Za-z0-9_]*)$").exec(head);
+    if (!m || !tools.length) { ac.classList.remove("show"); return; }
+    var prefix = m[1].toLowerCase();
+    var camelTools = tools.map(function (t) { return { name: t.name, camel: kebabToCamel(t.name), title: t.title || "" }; });
+    var matches = camelTools.filter(function (t) {
+      return prefix === "" || t.camel.toLowerCase().indexOf(prefix) !== -1 || t.name.toLowerCase().indexOf(prefix) !== -1;
+    }).slice(0, 30);
+    if (!matches.length) { ac.classList.remove("show"); return; }
+    replState.acItems = matches;
+    if (replState.acIndex >= matches.length) replState.acIndex = 0;
+    ac.innerHTML = matches.map(function (mt, i) {
+      var camelHead = mt.camel.slice(0, prefix.length);
+      var camelTail = mt.camel.slice(prefix.length);
+      return '<div class="repl-ac-item' + (i === replState.acIndex ? " active" : "") +
+        '" data-i="' + i + '">' +
+        '<span class="at">' + esc(camelHead) + "</span><span>" + esc(camelTail) + "</span>" +
+        '<span class="desc">' + esc(mt.title) + "</span>" +
+        "</div>";
+    }).join("");
+    // Anchor near the cursor: approximate using textarea metrics.
+    var rect = ta.getBoundingClientRect();
+    var lines = head.split("\n");
+    var lineH = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+    var top = (lines.length) * lineH + 12;
+    var left = Math.min(rect.width - 240, (lines[lines.length - 1].length * 7.4) + 14);
+    ac.style.top = top + "px";
+    ac.style.left = Math.max(8, left) + "px";
+    ac.classList.add("show");
+  }
+  function replAcInsert(item) {
+    var ta = byId("repl-src");
+    if (!ta) return;
+    var pos = ta.selectionStart;
+    var head = ta.value.slice(0, pos);
+    var tail = ta.value.slice(pos);
+    var m = new RegExp("mcp\\.([A-Za-z0-9_]*)$").exec(head);
+    if (!m) return;
+    var head2 = head.slice(0, head.length - m[1].length) + item.camel;
+    ta.value = head2 + tail;
+    var newPos = head2.length;
+    ta.selectionStart = ta.selectionEnd = newPos;
+    byId("repl-ac").classList.remove("show");
+    ta.focus();
+  }
+  function replRun() {
+    var cid = replSelectedClient();
+    if (!cid) { replState.lastErr = "No client connected."; renderReplResult(); return; }
+    var src = byId("repl-src").value;
+    if (!src.trim()) return;
+    replState.running = true; replState.last = null; replState.lastErr = null;
+    renderReplResult();
+    fetch("/api/script/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: cid, source: src, persistent: true }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        replState.running = false;
+        if (!data || !data.ok) replState.lastErr = (data && data.error) || "Run failed.";
+        else replState.last = data.data;
+        renderReplResult();
+      })
+      .catch(function () { replState.running = false; replState.lastErr = "Run failed."; renderReplResult(); });
+  }
+  // Wire the REPL once after init.
+  setTimeout(function () {
+    var ta = byId("repl-src");
+    var ac = byId("repl-ac");
+    var runBtn = byId("repl-run");
+    var clearBtn = byId("repl-clear");
+    if (!ta || !ac || !runBtn) return;
+    ta.addEventListener("input", function () { replAutocomplete(); });
+    ta.addEventListener("keydown", function (e) {
+      if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); replRun(); return; }
+      if (!ac.classList.contains("show")) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); replState.acIndex = (replState.acIndex + 1) % replState.acItems.length; replAutocomplete(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); replState.acIndex = (replState.acIndex - 1 + replState.acItems.length) % replState.acItems.length; replAutocomplete(); }
+      else if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        var sel = replState.acItems[replState.acIndex];
+        if (sel) replAcInsert(sel);
+      } else if (e.key === "Escape") {
+        ac.classList.remove("show");
+      }
+    });
+    ac.onclick = function (e) {
+      var row = e.target.closest(".repl-ac-item");
+      if (!row) return;
+      var idx = parseInt(row.getAttribute("data-i"), 10);
+      replAcInsert(replState.acItems[idx]);
+    };
+    runBtn.onclick = function () { replRun(); };
+    if (clearBtn) clearBtn.onclick = function () {
+      ta.value = ""; replState.last = null; replState.lastErr = null; renderReplResult(); ta.focus();
+    };
+    document.addEventListener("click", function (e) {
+      if (e.target.closest && (e.target.closest("#repl-ac") || e.target.closest("#repl-src"))) return;
+      ac.classList.remove("show");
+    });
+  }, 0);
 
   // ---- playbooks tab ----
   var pbState = {

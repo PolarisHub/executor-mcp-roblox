@@ -52,10 +52,6 @@ export class PlaybookService {
     params: Record<string, string> | undefined,
     options: { persistent?: boolean; timeoutMs?: number; rpcBudget?: number } = {},
   ): Promise<unknown> {
-    const cid = ClientId(clientId);
-    if (!this.clients.get(cid)) {
-      throw new ClientNotFoundError(`Client "${clientId}" is not connected.`);
-    }
     const playbook = await this.store.get(name);
     if (!playbook) {
       return { error: `No playbook named "${name}".` };
@@ -69,11 +65,26 @@ export class PlaybookService {
       return m;
     });
 
+    return this.runSource(substituted, clientId, options, `dashboard-playbook-${name}`);
+  }
+
+  /** REPL-style runner: any source, no save. Same scripting bridge as run(). */
+  async runSource(
+    source: string,
+    clientId: string,
+    options: { persistent?: boolean; timeoutMs?: number; rpcBudget?: number } = {},
+    sessionTag = "dashboard-repl",
+  ): Promise<unknown> {
+    const cid = ClientId(clientId);
+    if (!this.clients.get(cid)) {
+      throw new ClientNotFoundError(`Client "${clientId}" is not connected.`);
+    }
+
     const knownTools = this.registry.list().map((t) => t.name);
-    const preflight = preflightScript(substituted, knownTools);
+    const preflight = preflightScript(source, knownTools);
     if (preflight.errors.length > 0) {
       return {
-        error: `preflight: ${preflight.errors.length} unknown mcp.* tool${preflight.errors.length === 1 ? "" : "s"} in playbook "${name}".`,
+        error: `preflight: ${preflight.errors.length} unknown mcp.* tool${preflight.errors.length === 1 ? "" : "s"}.`,
         unknownTools: preflight.errors.map((f) => ({
           name: f.name,
           writtenAs: f.written,
@@ -83,18 +94,16 @@ export class PlaybookService {
       };
     }
 
-    // The dashboard isn't tied to an MCP session; mint under a synthetic id
-    // dedicated to dashboard-initiated playbook runs.
-    const sessionId = SessionId(`dashboard-playbook-${name}`);
+    const sessionId = SessionId(sessionTag);
     const { token, dispose } = this.scriptBridge.mint(
       sessionId,
-      "dashboard-playbook",
+      sessionTag,
       cid,
       options.rpcBudget,
     );
     try {
       return await this.gateway.eval(cid, {
-        source: substituted,
+        source,
         threadContext: this.config.execution.defaultThreadContext,
         timeoutMs: options.timeoutMs ?? 120000,
         env: options.persistent === false ? "fresh" : "vm",
