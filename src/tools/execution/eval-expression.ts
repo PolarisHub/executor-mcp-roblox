@@ -9,7 +9,9 @@ export default defineTool({
     "Evaluate ONE Luau expression on the active client and return its typeof plus an encoded value. " +
     "Convenience wrapper over run-luau for quick reads like 'workspace.Gravity', '#game.Players:GetPlayers()', " +
     "or 'game.PlaceId'. The expression is pcall-guarded, so a runtime error is reported as { ok = false, error } " +
-    "instead of failing the call. Pass an expression, not statements (no 'return', no ';').",
+    "instead of failing the call. Pass an expression, not statements (no 'return', no ';'). " +
+    "Note: this is PURE Luau — to compose with other server tools (e.g. `mcp.getPlayers()`, " +
+    "`mcp.searchInstances({...})`) use the `script` tool instead.",
   category: "Execution",
   input: z.object({
     expression: z

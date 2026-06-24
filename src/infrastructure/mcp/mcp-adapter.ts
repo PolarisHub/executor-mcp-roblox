@@ -94,17 +94,30 @@ export class McpAdapter {
     return [
       `This server gives you deep, low-level control of a LIVE Roblox game through an executor: ` +
         `${registry.size} tools across ${counts.length} categories — ${cats}.`,
-      `You have far more than basic code execution. There are dedicated tools for signals & connections, ` +
-        `metatables & closures, cross-references (xrefs), reverse-engineering & disassembly, memory scanning, ` +
-        `remote spying, GUI, drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming ` +
-        `something is impossible, call \`list-tools\` (no args for the category overview, or { category } / ` +
-        `{ search }) — there is very likely a purpose-built tool for it. Prefer the specific tool over hand-written ` +
-        `Luau whenever one exists.`,
-      `To orchestrate a multi-step workflow, use the \`script\` tool: write ONE Luau program that calls any tool ` +
-        `inline as \`mcp.<camelCaseToolName>(args)\` (or \`mcp.call("kebab-name", args)\`) and uses the returned ` +
-        `data — scan, branch, transform, and act in a single call instead of many round-trips.`,
-      `When several games are connected, select one first (list-clients / select-client). Most tools degrade ` +
-        `cleanly with { error } when a capability is missing from the executor, so it is safe to probe.`,
+      `*** READ THIS FIRST — THE \`script\` TOOL IS YOUR MAIN INTERFACE. ***\n` +
+        `Most tasks should NOT be a chain of individual tool calls. The \`script\` tool runs ONE Luau program ` +
+        `in the game that has a live \`mcp\` table bound to EVERY tool on this server. Inside the script you can:\n` +
+        `  • Call any tool inline: \`local players = mcp.getPlayers()\`, ` +
+        `\`local remotes = mcp.searchInstances({ className = "RemoteEvent" })\`, ` +
+        `\`mcp.findFunctionsByName({ name = "buy" })\`. Tool names are camelCase of the kebab name, ` +
+        `or use \`mcp.call("kebab-name", { ... })\`.\n` +
+        `  • Batch N independent calls into ONE round-trip with \`mcp.parallel({ a = function() return mcp.getPlayers() end, ` +
+        `b = function() return mcp.searchInstances({ className = "RemoteEvent" }) end })\`.\n` +
+        `  • Use \`game\`, \`workspace\`, and every in-game global at the same time — branch on a tool's result, ` +
+        `read a property, return a derived value.\n` +
+        `  • Globals you define persist across \`script\` calls (REPL-style). Use \`vm-reset\` to wipe.\n` +
+        `Result is \`{ result, output }\` — \`print\`/\`warn\` inside the script are captured. Compose 10 steps ` +
+        `into ONE call instead of 10 round-trips. \`run-luau\` is PURE Luau with no \`mcp\` table — only use it ` +
+        `when your code is fully self-contained and doesn't need any other tool.`,
+      `Beyond \`script\`, there are dedicated tools for signals & connections, metatables & closures, ` +
+        `cross-references (xrefs), reverse-engineering & disassembly, memory scanning, remote spying, GUI, ` +
+        `drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming something is ` +
+        `impossible, call \`list-tools\` (no args for the category overview, or { category } / { search }) — ` +
+        `there is very likely a purpose-built tool for it. Prefer the specific tool over hand-written Luau ` +
+        `whenever one exists; reach for them from inside \`script\` as \`mcp.<name>(...)\` to combine them.`,
+      `When several games are connected, select one first (list-clients / select-client), or use \`script-fanout\` ` +
+        `to run the same script across N clients in parallel. Most tools degrade cleanly with { error } when a ` +
+        `capability is missing from the executor, so it is safe to probe.`,
     ].join("\n\n");
   }
 
