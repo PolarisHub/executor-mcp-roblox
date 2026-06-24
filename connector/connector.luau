@@ -769,6 +769,22 @@ local function buildMcpTable(token)
 		end
 	end
 
+	-- mcp.help(name?) — Luau-side convenience for `tool-schema`. Accepts a
+	-- string name, a table { name=, search=, category= }, or no argument.
+	-- Returns the raw structured response (so a script can inspect it
+	-- programmatically); kebab-ifies a camelCase name so `mcp.help("getPlayers")`
+	-- and `mcp.help("get-players")` both work.
+	local function help(name)
+		local args = {}
+		if type(name) == "string" then
+			args.name = camelToKebab(name)
+		elseif type(name) == "table" then
+			for k, v in pairs(name) do args[k] = v end
+			if type(args.name) == "string" then args.name = camelToKebab(args.name) end
+		end
+		return call("tool-schema", args)
+	end
+
 	return setmetatable({
 		call = function(name, args) return call(name, args) end,
 		all = all,
@@ -776,6 +792,7 @@ local function buildMcpTable(token)
 		defer = defer,
 		publish = publish,
 		subscribe = subscribe,
+		help = help,
 	}, {
 		__index = function(_, key)
 			local name = camelToKebab(key)

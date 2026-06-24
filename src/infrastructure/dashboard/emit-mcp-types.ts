@@ -1,5 +1,7 @@
+import { z } from "zod";
 import type { ToolRegistry } from "../../application/tool/registry.js";
-import { zodToLuauType } from "./zod-luau-type.js";
+import { zodToLuauType } from "../../application/services/zod-luau-type.js";
+import { describeInputFields } from "../../application/services/schema-introspect.js";
 
 function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -25,20 +27,41 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
 
   for (const tool of tools) {
     const aliasName = "Mcp_" + kebabToCamel(tool.name).replace(/^([a-z])/, (m) => m.toUpperCase()) + "Input";
-    let luauType: string;
-    try {
-      luauType = zodToLuauType(tool.input);
-    } catch {
-      luauType = "{[string]: any}";
+    // For object inputs, emit a structured alias whose fields each carry their
+    // own `-- description` comment so Luau LSPs hover-render the docstring per
+    // argument. For non-object inputs, fall back to the compact one-shot type.
+    let typeBody: string;
+    if (tool.input instanceof z.ZodObject) {
+      const fields = describeInputFields(tool.input);
+      if (fields.length === 0) {
+        typeBody = "{}";
+      } else {
+        const lines: string[] = ["{"];
+        for (const field of fields) {
+          if (field.description) {
+            const oneLine = field.description.replace(/\s+/g, " ").trim();
+            const trimmed = oneLine.length > 200 ? oneLine.slice(0, 197) + "..." : oneLine;
+            lines.push(`    -- ${trimmed}`);
+          }
+          lines.push(`    ${field.name}: ${field.type},`);
+        }
+        lines.push("  }");
+        typeBody = lines.join("\n  ");
+      }
+    } else {
+      try {
+        typeBody = zodToLuauType(tool.input);
+      } catch {
+        typeBody = "{[string]: any}";
+      }
     }
     aliasLines.push(`-- ${tool.title}`);
     if (tool.description) {
-      // Quote-escape the description for the doc comment; keep it on one line.
       const oneLine = tool.description.replace(/\s+/g, " ").trim();
       const trimmed = oneLine.length > 220 ? oneLine.slice(0, 217) + "..." : oneLine;
       aliasLines.push(`-- ${trimmed}`);
     }
-    aliasLines.push(`export type ${aliasName} = ${luauType}`);
+    aliasLines.push(`export type ${aliasName} = ${typeBody}`);
     aliasLines.push("");
 
     const camel = kebabToCamel(tool.name);
@@ -66,6 +89,13 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
     "  parallel: (spec: {[any]: any}) -> {[any]: any},",
     "  -- Build a deferred call descriptor for use inside mcp.parallel/mcp.all.",
     "  defer: (name: string, args: any?) -> McpDeferred,",
+    "  -- Publish to a cross-game channel; subscribers in any connected script receive it.",
+    "  publish: (channel: string, payload: any?) -> any,",
+    "  -- Subscribe to a cross-game channel; handler receives (payload, fromClientId).",
+    "  subscribe: (channel: string, handler: (any, string) -> ()) -> any,",
+    "  -- Look up a tool's input schema + Luau signature at runtime. With no name,",
+    "  -- returns every tool's signature. Use this BEFORE calling an unfamiliar tool.",
+    "  help: (name: string?) -> any,",
     "}",
     "",
     "return mcp",

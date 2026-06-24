@@ -14,10 +14,16 @@ import { z } from "zod";
 type Json = Record<string, unknown>;
 
 function describe(node: z.ZodTypeAny): string | undefined {
-  // Zod stores .describe(...) on _def.description; access defensively.
+  // Zod v4 exposes .describe(s) via `node.description` (getter) and `node.meta()`.
+  // v3 used `_def.description`. Cover both, defensively.
+  const direct = (node as unknown as { description?: unknown }).description;
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  const meta = (node as unknown as { meta?: () => { description?: unknown } | undefined }).meta?.();
+  const fromMeta = meta?.description;
+  if (typeof fromMeta === "string" && fromMeta.length > 0) return fromMeta;
   const def = (node as unknown as { _def?: { description?: unknown } })._def;
-  const d = def?.description;
-  return typeof d === "string" ? d : undefined;
+  const fromDef = def?.description;
+  return typeof fromDef === "string" && fromDef.length > 0 ? fromDef : undefined;
 }
 
 function unwrapOptional(node: z.ZodTypeAny): { inner: z.ZodTypeAny; optional: boolean } {

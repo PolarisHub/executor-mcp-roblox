@@ -101,6 +101,9 @@ export class McpAdapter {
         `\`local remotes = mcp.searchInstances({ className = "RemoteEvent" })\`, ` +
         `\`mcp.findFunctionsByName({ name = "buy" })\`. Tool names are camelCase of the kebab name, ` +
         `or use \`mcp.call("kebab-name", { ... })\`.\n` +
+        `  • Look up the right arguments BEFORE calling an unfamiliar tool: ` +
+        `\`mcp.help("get-players")\` returns \`{ signature, args[], example, ... }\`. ` +
+        `With no name, \`mcp.help()\` lists every tool's compact signature. Never guess args — ask first.\n` +
         `  • Batch N independent calls into ONE round-trip with \`mcp.parallel({ a = function() return mcp.getPlayers() end, ` +
         `b = function() return mcp.searchInstances({ className = "RemoteEvent" }) end })\`.\n` +
         `  • Use \`game\`, \`workspace\`, and every in-game global at the same time — branch on a tool's result, ` +
@@ -108,7 +111,9 @@ export class McpAdapter {
         `  • Globals you define persist across \`script\` calls (REPL-style). Use \`vm-reset\` to wipe.\n` +
         `Result is \`{ result, output }\` — \`print\`/\`warn\` inside the script are captured. Compose 10 steps ` +
         `into ONE call instead of 10 round-trips. \`run-luau\` is PURE Luau with no \`mcp\` table — only use it ` +
-        `when your code is fully self-contained and doesn't need any other tool.`,
+        `when your code is fully self-contained and doesn't need any other tool. If you prefer not to enter ` +
+        `\`script\` mode at all, call the top-level \`tool-schema\` tool with \`{ name }\` (or \`{ search }\`) ` +
+        `to get any tool's signature without writing Luau.`,
       `Beyond \`script\`, there are dedicated tools for signals & connections, metatables & closures, ` +
         `cross-references (xrefs), reverse-engineering & disassembly, memory scanning, remote spying, GUI, ` +
         `drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming something is ` +

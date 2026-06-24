@@ -10,6 +10,7 @@ import queueOnTeleport from "./queue-on-teleport.js";
 import clearQueueOnTeleport from "./clear-queue-on-teleport.js";
 import saveInstance from "./save-instance.js";
 import messageBox from "./message-box.js";
+import toolSchema from "./tool-schema.js";
 
 /** Miscellaneous executor utilities (FastFlags, FPS cap, HWID, clipboard, teleport queue, saveinstance, messagebox). */
 export const utilityTools: Tool[] = [
@@ -23,4 +24,5 @@ export const utilityTools: Tool[] = [
   clearQueueOnTeleport,
   saveInstance,
   messageBox,
+  toolSchema,
 ];

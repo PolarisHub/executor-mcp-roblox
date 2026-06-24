@@ -2,11 +2,11 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **236 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once.
+It ships **237 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## What's in the box
 
-### Tools (236 across 21 categories)
+### Tools (237 across 21 categories)
 
 The big ones you'll reach for first:
 
@@ -47,6 +47,10 @@ local p = mcp.getPlayers()
 local r = mcp.searchInstances({ className = "RemoteEvent" })
 print(#p .. " players, " .. #r.instances .. " remotes")
 
+-- look up any tool's args at runtime, no guessing — returns
+-- { signature, args = {{name, type, optional, description}, ...}, example, ... }
+local schema = mcp.help("discover-player-values")
+
 -- batch N independent calls into one round-trip:
 local b = mcp.parallel({
   players = function() return mcp.getPlayers() end,
@@ -59,6 +63,8 @@ mcp.subscribe("scores", function(payload, fromClientId)
 end)
 mcp.publish("scores", { score = 100 })
 ```
+
+`mcp.help(name?)` is the in-script equivalent of the top-level `tool-schema` tool: with a name it returns the full per-field detail; with no argument it returns every tool's compact signature. Use it before calling an unfamiliar tool instead of guessing arg shapes.
 
 `mcp.parallel` is a real coroutine scheduler — every `mcp.*` call inside any of the passed functions yields a marker, the scheduler collects markers across all coroutines per round and batches them into ONE `rpc-batch`. A 5-step recipe across 5 coroutines runs in ~5 round trips, not 25.
 

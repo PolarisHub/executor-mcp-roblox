@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
 import { preflightScript } from "../../application/services/script-preflight.js";
+import { inputSignature } from "../../application/services/schema-introspect.js";
 
 /**
  * Runs a Luau program in the active client with a built-in `mcp` table that can
@@ -77,6 +78,17 @@ export default defineTool({
     // runtime; here we suggest near-misses and refuse to run.
     const preflight = preflightScript(source, ctx.scripting.knownTools);
     if (preflight.errors.length > 0) {
+      // Enrich each near-miss suggestion with a compact Luau signature so the
+      // agent learns the right SHAPE in the same response that flagged the
+      // wrong NAME. Without this the agent often guesses args on the retry.
+      const directory = ctx.tools;
+      const withSignatures = (names: readonly string[]) =>
+        names.map((suggestion) => {
+          const found = directory.find(suggestion);
+          return found
+            ? { name: suggestion, signature: inputSignature(found.input), title: found.title }
+            : { name: suggestion, signature: "{}", title: "" };
+        });
       return {
         data: {
           error:
@@ -89,10 +101,13 @@ export default defineTool({
             name: f.name,
             writtenAs: f.written,
             occurrences: f.occurrences,
-            didYouMean: f.suggestions,
+            didYouMean: withSignatures(f.suggestions),
           })),
           callsScanned: preflight.callCount,
-          hint: "Tool names are kebab-case on the wire; mcp.getPlayers() resolves to get-players. Use list-tools or suggest-tools to discover names.",
+          hint:
+            "Tool names are kebab-case on the wire; mcp.getPlayers() resolves to get-players. " +
+            "Use mcp.help('tool-name') from inside the script to look up signatures, or call " +
+            "list-tools / tool-schema to discover them.",
         },
         isError: true,
       };

@@ -10,6 +10,7 @@ import type { Logger } from "../ports/logger.js";
 import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
 import type { SessionLogger } from "../ports/session-logger.js";
+import type { ToolDirectory } from "../ports/tool-directory.js";
 
 /** Server-host capabilities for the few tools that operate outside the game sandbox. */
 export interface HostServices {
@@ -76,6 +77,8 @@ export interface ToolContext {
   readonly playbooks: SavedScriptsStore;
   /** Per-session append-only tool-call trace. */
   readonly sessionLogger: SessionLogger;
+  /** Read-only schema view of every registered tool, for introspection tools. */
+  readonly tools: ToolDirectory;
   /**
    * Invoke another tool through the same {@link ToolInvoker} the caller is on.
    * Used by `session-replay` to actually re-issue a recorded trace. The call

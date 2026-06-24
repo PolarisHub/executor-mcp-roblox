@@ -15,6 +15,7 @@ import type { Metrics } from "../ports/metrics.js";
 import type { SavedScriptsStore } from "../ports/saved-scripts.js";
 import type { SemanticIndex } from "../ports/semantic-index.js";
 import type { SessionLogger } from "../ports/session-logger.js";
+import type { ToolDescriptor, ToolDirectory } from "../ports/tool-directory.js";
 import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
 import type { ToolRegistry } from "../tool/registry.js";
 import type { ScriptBridge } from "./script-bridge.js";
@@ -62,6 +63,27 @@ export class ToolInvoker {
     return `http://${reachable}:${port}`;
   }
 
+  /** Adapter: present the live registry as a read-only ToolDirectory port. */
+  private toolDirectory(): ToolDirectory {
+    const { registry } = this.deps;
+    const toDescriptor = (tool: ReturnType<ToolRegistry["list"]>[number]): ToolDescriptor => ({
+      name: tool.name,
+      title: tool.title,
+      description: tool.description,
+      category: tool.category,
+      mutatesState: tool.mutatesState === true,
+      requiresClient: tool.requiresClient !== false,
+      input: tool.input,
+    });
+    return {
+      list: () => registry.list().map(toDescriptor),
+      find: (name) => {
+        const tool = registry.get(name);
+        return tool ? toDescriptor(tool) : null;
+      },
+    };
+  }
+
   async invoke(request: InvocationRequest): Promise<ToolResult> {
     const { registry, sessions, gateway, clients, metrics, clock, config } = this.deps;
     const tool = registry.get(request.toolName);
@@ -96,6 +118,7 @@ export class ToolInvoker {
       semantic: this.deps.semantic,
       playbooks: this.deps.playbooks,
       sessionLogger: this.deps.sessionLogger,
+      tools: this.toolDirectory(),
       invokeTool: (name, input) =>
         this.invoke({
           toolName: name,

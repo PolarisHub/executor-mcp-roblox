@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { ToolContext } from "../../../src/application/tool/tool.js";
+import type { ToolDirectory, ToolDescriptor } from "../../../src/application/ports/tool-directory.js";
 import { utilityTools } from "../../../src/tools/utility/index.js";
 import getFastFlag from "../../../src/tools/utility/get-fast-flag.js";
 import setFpsCap from "../../../src/tools/utility/set-fps-cap.js";
 import messageBox from "../../../src/tools/utility/message-box.js";
+import toolSchema from "../../../src/tools/utility/tool-schema.js";
 
 interface Captured {
   source: string;
@@ -22,9 +25,9 @@ function stubContext(canned: unknown): { ctx: ToolContext; calls: Captured[] } {
 }
 
 describe("utility tools", () => {
-  it("exports 10 tools, all in the Utility category, with unique names", () => {
-    expect(utilityTools).toHaveLength(10);
-    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(10);
+  it("exports 11 tools, all in the Utility category, with unique names", () => {
+    expect(utilityTools).toHaveLength(11);
+    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(11);
     for (const tool of utilityTools) {
       expect(tool.category).toBe("Utility");
     }
@@ -64,5 +67,108 @@ describe("utility tools", () => {
     const src = calls[0]?.source ?? "";
     expect(src).toContain('type(messagebox) ~= "function"');
     expect(src).toContain('pcall(messagebox, "hi", "Title", 4)');
+  });
+
+  describe("tool-schema", () => {
+    function fakeDirectory(): ToolDirectory {
+      const tools: ToolDescriptor[] = [
+        {
+          name: "get-players",
+          title: "Get connected players",
+          description: "Returns the players currently in the game.",
+          category: "Inspection",
+          mutatesState: false,
+          requiresClient: true,
+          input: z.object({
+            limit: z.number().int().optional().describe("Max players to return."),
+            includeBots: z.boolean().optional().describe("Include AI/bot players."),
+          }),
+        },
+        {
+          name: "set-instance-property",
+          title: "Set a property on an instance",
+          description: "Writes a property by path.",
+          category: "Actions",
+          mutatesState: true,
+          requiresClient: true,
+          input: z.object({
+            path: z.string().describe("Dotted path."),
+            property: z.string(),
+            value: z.unknown(),
+          }),
+        },
+      ];
+      return {
+        list: () => tools,
+        find: (name) => tools.find((t) => t.name === name) ?? null,
+      };
+    }
+    function ctxWithDirectory(): ToolContext {
+      return { tools: fakeDirectory() } as unknown as ToolContext;
+    }
+
+    it("returns the signature, args list, and example for a named tool", async () => {
+      const ctx = ctxWithDirectory();
+      const result = await toolSchema.execute({ name: "get-players" }, ctx);
+      const data = result.data as {
+        name: string;
+        camelCase: string;
+        signature: string;
+        args: Array<{ name: string; type: string; optional: boolean; description: string | null }>;
+        example: string;
+      };
+      expect(data.name).toBe("get-players");
+      expect(data.camelCase).toBe("getPlayers");
+      expect(data.signature).toBe("{ limit: number?, includeBots: boolean? }");
+      expect(data.args).toHaveLength(2);
+      expect(data.args[0]).toMatchObject({
+        name: "limit",
+        type: "number?",
+        optional: true,
+        description: "Max players to return.",
+      });
+      // Every field is optional → example has no positional args.
+      expect(data.example).toBe("mcp.getPlayers()");
+    });
+
+    it("includes required fields in the example invocation", async () => {
+      const ctx = ctxWithDirectory();
+      const result = await toolSchema.execute({ name: "set-instance-property" }, ctx);
+      const data = result.data as { example: string };
+      expect(data.example).toContain("mcp.setInstanceProperty(");
+      expect(data.example).toContain("path = <string>");
+      expect(data.example).toContain("property = <string>");
+    });
+
+    it("returns near-miss suggestions with signatures when the name is unknown", async () => {
+      const ctx = ctxWithDirectory();
+      const result = await toolSchema.execute({ name: "get-player" }, ctx);
+      expect(result.isError).toBe(true);
+      const data = result.data as {
+        didYouMean: Array<{ name: string; signature: string }>;
+      };
+      const names = data.didYouMean.map((d) => d.name);
+      expect(names).toContain("get-players");
+      const suggestion = data.didYouMean.find((d) => d.name === "get-players");
+      expect(suggestion?.signature).toBe("{ limit: number?, includeBots: boolean? }");
+    });
+
+    it("listing mode returns every tool's signature", async () => {
+      const ctx = ctxWithDirectory();
+      const result = await toolSchema.execute({}, ctx);
+      const data = result.data as {
+        count: number;
+        tools: Array<{ name: string; signature: string }>;
+      };
+      expect(data.count).toBe(2);
+      expect(data.tools.map((t) => t.name)).toEqual(["get-players", "set-instance-property"]);
+    });
+
+    it("search mode filters by keyword across name/title/description", async () => {
+      const ctx = ctxWithDirectory();
+      const result = await toolSchema.execute({ search: "property" }, ctx);
+      const data = result.data as { tools: Array<{ name: string }> };
+      expect(data.tools.map((t) => t.name)).toEqual(["set-instance-property"]);
+    });
   });
 });
