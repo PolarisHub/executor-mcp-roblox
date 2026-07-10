@@ -233,16 +233,34 @@ async function main(): Promise<void> {
     return;
   }
 
-  const shutdown = (signal: NodeJS.Signals): void => {
+  let shuttingDown = false;
+  const shutdown = (code: number): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     void app
       .stop()
       .catch(() => undefined)
-      .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+      .finally(() => process.exit(code));
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", () => shutdown(130));
+  process.once("SIGTERM", () => shutdown(143));
+  // The MCP host drives us over stdio. When it closes our stdin the host has gone
+  // away, so shut down and release the bridge port instead of lingering as an
+  // orphan that makes the next instance crash with EADDRINUSE — the disconnect
+  // loop. On Windows this stdin-close is the only reliable stop signal, since
+  // SIGTERM there is a best-effort emulation the host may not deliver.
+  process.stdin.on("end", () => shutdown(0));
+  process.stdin.on("close", () => shutdown(0));
 
-  await app.start();
+  try {
+    await app.start();
+  } catch (error) {
+    // A failed bind (e.g. EADDRINUSE, when a previous instance still holds the
+    // port) must exit cleanly rather than reject unhandled — the host respawns us.
+    process.stderr.write(`fatal: failed to start — ${(error as Error).message}\n`);
+    await app.stop().catch(() => undefined);
+    process.exit(1);
+  }
 }
 
 void main();

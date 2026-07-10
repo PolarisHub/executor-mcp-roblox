@@ -114,7 +114,7 @@ Counts are the canonical post-migration totals (the categories are the fixed set
 | Execution             |       10 | run Luau (sync/await/file/batch/deferred), profile time & memory, looped polling, single-expression eval, watchdog timeout                    |
 | Remote Spy            |       10 | remote inventory, signature probing, intercept/log/block/ignore (Cobalt), traffic tracing, single-remote monitoring, callback inspection      |
 | Diagnostics           |        9 | bridge/connector status, executor identity & capability matrix, memory/instance/render stats, anti-cheat recon, tool catalog                  |
-| GUI                   |        8 | list the GUI tree, read/set text, click buttons, type text, fire ProximityPrompt/ClickDetector, send key input                                |
+| GUI                   |       10 | list the GUI tree, read/set text, click buttons, type text, fire ProximityPrompt/ClickDetector, send keyboard/mouse/touch/gamepad input, control the camera |
 | Instrumentation       |        8 | hook-and-log, count calls, profile call durations, spoof returns, block functions, capture log output, watch property changes                 |
 | Memory Scan           |        8 | search by value/key/number-range/string, read/write any path, find table references, watch a value                                            |
 | Session & Client      |        7 | list/select/clear active client (per-session, account-sticky), player roster, local player & place details                                    |

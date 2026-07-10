@@ -51,7 +51,15 @@ if not okSvc or typeof(vim) ~= "Instance" then
   return { key = keyName, ok = false, error = "could not get VirtualInputManager: " .. tostring(vim) }
 end
 
-local okDown, downErr = pcall(function() vim:SendKeyEvent(true, kc, false, game) end)
+local function invokeNative(fn)
+  if type(newcclosure) == "function" then
+    local okWrap, wrapped = pcall(newcclosure, fn)
+    if okWrap and type(wrapped) == "function" then fn = wrapped end
+  end
+  return pcall(fn)
+end
+
+local okDown, downErr = invokeNative(function() vim:SendKeyEvent(true, kc, false, game) end)
 if not okDown then
   return { key = keyName, ok = false, error = "SendKeyEvent (down) failed (VirtualInputManager requires an exploit/elevated context): " .. tostring(downErr) }
 end
@@ -60,7 +68,7 @@ if ${hold} > 0 and type(task) == "table" and type(task.wait) == "function" then
   pcall(task.wait, ${hold})
 end
 
-local okUp, upErr = pcall(function() vim:SendKeyEvent(false, kc, false, game) end)
+local okUp, upErr = invokeNative(function() vim:SendKeyEvent(false, kc, false, game) end)
 if not okUp then
   return { key = keyName, ok = false, error = "SendKeyEvent (up) failed; key may be stuck down: " .. tostring(upErr) }
 end

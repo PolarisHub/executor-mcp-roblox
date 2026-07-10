@@ -2,11 +2,11 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **237 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
+It ships **239 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## What's in the box
 
-### Tools (237 across 21 categories)
+### Tools (239 across 21 categories)
 
 The big ones you'll reach for first:
 
@@ -29,7 +29,7 @@ Run `list-tools` once connected for the full catalog, or `GET /api/tools/schema`
 Open `http://localhost:16384/` once the server's running. Eight tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
-- **Tools** — category-grouped browser of all 236 tools with search.
+- **Tools** — category-grouped browser of all 238 tools with search.
 - **Activity** — live tool-call stream with text/category/outcome filters.
 - **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch.
 - **Brief** — Place/Game/JobId metadata, surface counts (RemoteEvent/Script/Tool), Local Player info, top remotes from the spy buffer, Discover Values button, Fanout-across-all-clients starter.

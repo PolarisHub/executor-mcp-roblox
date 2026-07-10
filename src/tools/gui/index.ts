@@ -8,6 +8,8 @@ import typeTextBox from "./type-text-box.js";
 import fireProximityPrompt from "./fire-proximity-prompt.js";
 import fireClickDetector from "./fire-click-detector.js";
 import pressKey from "./press-key.js";
+import virtualInput from "./virtual-input.js";
+import cameraControl from "./camera-control.js";
 
 /** Every tool in the GUI category, in migration order. */
 export const guiTools: Tool[] = [
@@ -19,4 +21,6 @@ export const guiTools: Tool[] = [
   fireProximityPrompt,
   fireClickDetector,
   pressKey,
+  virtualInput,
+  cameraControl,
 ];

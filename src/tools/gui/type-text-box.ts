@@ -39,6 +39,14 @@ local text = ${q(text)}
 local enter = ${enter ? "true" : "false"}
 local useKeyPress = ${useKeyPress ? "true" : "false"}
 
+local function invokeNative(fn)
+  if type(newcclosure) == "function" then
+    local okWrap, wrapped = pcall(newcclosure, fn)
+    if okWrap and type(wrapped) == "function" then fn = wrapped end
+  end
+  return pcall(fn)
+end
+
 pcall(function() textBox:CaptureFocus() end)
 if type(task) == "table" and type(task.wait) == "function" then pcall(task.wait, 0.05) end
 
@@ -46,7 +54,7 @@ if useKeyPress then
   local okSvc, vim = pcall(function() return game:GetService("VirtualInputManager") end)
   local success = false
   if okSvc and typeof(vim) == "Instance" then
-    success = pcall(function()
+    success = invokeNative(function()
       for i = 1, #text do
         vim:SendTextInput(text:sub(i, i), nil, game)
         if type(task) == "table" and type(task.wait) == "function" then task.wait(0.01) end
@@ -79,9 +87,9 @@ if enter then
     else
       pcall(function()
         local vim = game:GetService("VirtualInputManager")
-        vim:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+        invokeNative(function() vim:SendKeyEvent(true, Enum.KeyCode.Return, false, game) end)
         if type(task) == "table" and type(task.wait) == "function" then task.wait(0.01) end
-        vim:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+        invokeNative(function() vim:SendKeyEvent(false, Enum.KeyCode.Return, false, game) end)
       end)
     end
   end

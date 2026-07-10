@@ -3,6 +3,8 @@ import type { LuauOptions, ToolContext } from "../../../src/application/tool/too
 import listGuiElements from "../../../src/tools/gui/list-gui-elements.js";
 import setGuiText from "../../../src/tools/gui/set-gui-text.js";
 import clickButton from "../../../src/tools/gui/click-button.js";
+import virtualInput from "../../../src/tools/gui/virtual-input.js";
+import cameraControl from "../../../src/tools/gui/camera-control.js";
 import { guiTools } from "../../../src/tools/gui/index.js";
 
 /**
@@ -25,16 +27,16 @@ function stubContext(canned: unknown): {
 }
 
 describe("gui tools", () => {
-  it("exports all 8 tools with unique names in the GUI category", () => {
-    expect(guiTools).toHaveLength(8);
+  it("exports all 10 tools with unique names in the GUI category", () => {
+    expect(guiTools).toHaveLength(10);
     const names = guiTools.map((t) => t.name);
-    expect(new Set(names).size).toBe(8);
+    expect(new Set(names).size).toBe(10);
     for (const tool of guiTools) {
       expect(tool.category).toBe("GUI");
     }
   });
 
-  it("marks exactly the six interaction tools as mutatesState", () => {
+  it("marks the interaction tools as mutatesState", () => {
     const mutating = guiTools
       .filter((t) => t.mutatesState === true)
       .map((t) => t.name)
@@ -47,6 +49,8 @@ describe("gui tools", () => {
         "fire-proximity-prompt",
         "fire-click-detector",
         "press-key",
+        "virtual-input",
+        "camera-control",
       ].sort(),
     );
   });
@@ -157,6 +161,51 @@ describe("gui tools", () => {
       expect(source).toContain('local action = "MouseButton1Click"');
       expect(source).toContain("if not table.find(signals, action) then");
       expect(source).toContain("firesignal(button[action])");
+    });
+  });
+
+  describe("virtual-input", () => {
+    it("builds a newcclosure-backed mouse click with executor-safe parameters", async () => {
+      const canned = { ok: true, action: "mouseButton" };
+      const { ctx, calls } = stubContext(canned);
+      const input = virtualInput.input.parse({
+        action: "mouseButton",
+        x: 320,
+        y: 240,
+        button: "Left",
+        buttonAction: "click",
+        holdSec: 0.25,
+      });
+
+      const result = await virtualInput.execute(input, ctx);
+
+      expect(result).toEqual({ data: canned });
+      expect(virtualInput.mutatesState).toBe(true);
+      expect(calls[0]?.source).toContain("newcclosure");
+      expect(calls[0]?.source).toContain("SendMouseButtonEvent(x, y, id, isDown, game, 0)");
+      expect(calls[0]?.source).toContain("local holdSec = 0.25");
+      expect(calls[0]?.options?.timeoutMs).toBe(20000);
+    });
+  });
+
+  describe("camera-control", () => {
+    it("builds a structured look-at camera update", async () => {
+      const canned = { ok: true, action: "setCFrame" };
+      const { ctx, calls } = stubContext(canned);
+      const input = cameraControl.input.parse({
+        action: "setCFrame",
+        position: { x: 0, y: 10, z: 20 },
+        lookAt: { x: 0, y: 0, z: 0 },
+        fov: 70,
+        cameraType: "Scriptable",
+      });
+
+      const result = await cameraControl.execute(input, ctx);
+
+      expect(result).toEqual({ data: canned });
+      expect(calls[0]?.source).toContain("CFrame.lookAt");
+      expect(calls[0]?.source).toContain("camera.FieldOfView = 70");
+      expect(calls[0]?.source).toContain('Enum.CameraType["Scriptable"]');
     });
   });
 });
