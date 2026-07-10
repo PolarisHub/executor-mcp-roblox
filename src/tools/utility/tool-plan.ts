@@ -37,11 +37,37 @@ export default defineTool({
       .optional()
       .default(true)
       .describe("Include tools that write game state in the ranked alternatives and workflow."),
+    capabilityAware: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        "Use the active client's advertised executor capabilities to annotate and rank candidates.",
+      ),
   }),
-  async execute({ goal, limit, includeMutating }, ctx) {
+  async execute({ goal, limit, includeMutating, capabilityAware }, ctx) {
     const all = ctx.tools.list();
     const usable = includeMutating ? all : all.filter((tool) => !tool.mutatesState);
-    const ranked = rankTools(goal, usable, limit);
+    const resolution = ctx.session?.resolve?.() ?? {
+      status: "none" as const,
+      reason: "no-clients" as const,
+    };
+    const activeCapabilities =
+      capabilityAware && resolution.status === "resolved"
+        ? new Set(resolution.client.capabilities)
+        : null;
+    const ranked = rankTools(goal, usable, limit)
+      .map((entry) => {
+        const required = entry.tool.ai?.requiresCapabilities ?? [];
+        const support =
+          required.length === 0 || !activeCapabilities
+            ? 0
+            : required.every((capability) => activeCapabilities.has(capability))
+              ? 20
+              : -20;
+        return { ...entry, score: entry.score + support };
+      })
+      .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name));
     const available = new Set(usable.map((tool) => tool.name));
     const workflows = matchWorkflows(goal, available);
     const workflow = workflows[0] ?? null;
@@ -53,6 +79,15 @@ export default defineTool({
       args: describeInputFields(tool.input),
       mutatesState: tool.mutatesState,
       requiresClient: tool.requiresClient,
+      ai: tool.ai,
+      capabilityStatus:
+        !tool.ai?.requiresCapabilities?.length || !capabilityAware
+          ? "not-required"
+          : !activeCapabilities
+            ? "unknown"
+            : tool.ai.requiresCapabilities.every((capability) => activeCapabilities.has(capability))
+              ? "supported"
+              : "missing",
     });
     const formatWorkflow = (candidate: (typeof workflows)[number]) => ({
       id: candidate.id,
@@ -70,6 +105,11 @@ export default defineTool({
         interpretation:
           workflow?.title ??
           "No curated recipe matched; use the ranked candidates as an exploratory shortlist.",
+        clientCapabilities: activeCapabilities
+          ? [...activeCapabilities]
+          : resolution.status === "resolved"
+            ? []
+            : null,
         workflow: workflow ? formatWorkflow(workflow) : null,
         workflows: workflows.map(formatWorkflow),
         alternatives: ranked.map((entry) => ({

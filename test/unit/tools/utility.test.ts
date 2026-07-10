@@ -11,6 +11,7 @@ import setFpsCap from "../../../src/tools/utility/set-fps-cap.js";
 import messageBox from "../../../src/tools/utility/message-box.js";
 import toolSchema from "../../../src/tools/utility/tool-schema.js";
 import toolPlan from "../../../src/tools/utility/tool-plan.js";
+import agentContext from "../../../src/tools/utility/agent-context.js";
 
 interface Captured {
   source: string;
@@ -58,9 +59,9 @@ function plannerContext(): ToolContext {
 }
 
 describe("utility tools", () => {
-  it("exports 12 tools, all in the Utility category, with unique names", () => {
-    expect(utilityTools).toHaveLength(12);
-    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(12);
+  it("exports 15 tools, all in the Utility category, with unique names", () => {
+    expect(utilityTools).toHaveLength(15);
+    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(15);
     for (const tool of utilityTools) {
       expect(tool.category).toBe("Utility");
     }
@@ -208,7 +209,12 @@ describe("utility tools", () => {
   describe("tool-plan", () => {
     it("turns a natural-language goal into schema-aware ranked candidates", async () => {
       const result = await toolPlan.execute(
-        { goal: "find the player's cash", limit: 5, includeMutating: false },
+        {
+          goal: "find the player's cash",
+          limit: 5,
+          includeMutating: false,
+          capabilityAware: false,
+        },
         plannerContext(),
       );
       const data = result.data as {
@@ -230,6 +236,35 @@ describe("utility tools", () => {
       expect(data.guidance).toContain(
         "Mutating tools were excluded; set includeMutating=true when you are ready to act.",
       );
+    });
+  });
+
+  describe("agent-context", () => {
+    it("reports a missing client and gives the agent a concrete next step", async () => {
+      const result = await agentContext.execute(
+        {
+          includeGameInfo: false,
+          includeExecutorInfo: false,
+          includeCapabilities: false,
+          includeHistory: false,
+          historyLimit: 1,
+          includeMemory: false,
+          memoryLimit: 1,
+        },
+        {
+          clients: { list: () => [], get: () => undefined },
+          session: {
+            id: "session-test",
+            label: "Test",
+            resolve: () => ({ status: "none", reason: "no-clients" }),
+          },
+        } as unknown as ToolContext,
+      );
+      const data = result.data as { readyForClientTools: boolean; recommendations: string[] };
+
+      expect(data.readyForClientTools).toBe(false);
+      expect(data.recommendations[0]).toContain("Connect a Roblox executor client");
+      expect(result.summary).toBe("No Roblox clients connected.");
     });
   });
 });

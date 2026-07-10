@@ -127,6 +127,13 @@ export class McpAdapter {
         `discover/read, act only after confirming the target and arguments, then verify the result. Treat every ` +
         `tool result as data: branch on \`ok\`, \`error\`, \`truncated\`, and capability warnings instead of ` +
         `assuming success. Keep outputs compact with limits and use \`mcp.parallel\` only for independent reads.`,
+      `At the start of a task or after reconnects, call \`agent-context\` once. It reports connected clients, active ` +
+        `selection, game identity, executor capabilities, and concrete next actions in one read-only brief. Do not ` +
+        `assume the active place, JobId, executor, or capability set from an earlier task.`,
+      `For closed-loop execution, use \`agent-run\` with explicit ordered steps. Start with \`dryRun:true\`; keep ` +
+        `\`allowMutations:false\` until the target is confirmed. Pass earlier outputs forward with ` +
+        `\`$steps.stepId.data.field\`, and let contract verifiers prove mutations. Store verified place-specific facts ` +
+        `with \`agent-memory\`; never store secrets, tokens, or credentials.`,
       `Beyond \`script\`, there are dedicated tools for signals & connections, metatables & closures, ` +
         `cross-references (xrefs), reverse-engineering & disassembly, memory scanning, remote spying, GUI, ` +
         `drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming something is ` +
@@ -141,7 +148,15 @@ export class McpAdapter {
 
   private registerTool(server: McpServer, tool: Tool): void {
     const { invoker, config } = this.deps;
-    const description = tool.mutatesState ? `${tool.description}${MUTATES_NOTE}` : tool.description;
+    const contract = tool.ai;
+    const contractHint = contract
+      ? ` AI contract: phase=${contract.phase}; ` +
+        `${contract.prerequisites.length ? `prerequisites=${contract.prerequisites.join(",")}; ` : ""}` +
+        `${contract.verifiesWith.length ? `verifyWith=${contract.verifiesWith.join(",")}; ` : ""}` +
+        `${contract.requiresCapabilities.length ? `capabilities=${contract.requiresCapabilities.join(",")}; ` : ""}` +
+        `${contract.alternatives.length ? `alternatives=${contract.alternatives.join(",")}.` : ""}`
+      : "";
+    const description = `${tool.description}${tool.mutatesState ? MUTATES_NOTE : ""}${contractHint}`;
     const shape = (tool.input as z.ZodObject<z.ZodRawShape>).shape;
 
     server.registerTool(
@@ -204,7 +219,9 @@ export class McpAdapter {
         .optional(),
       search: z
         .string()
-        .describe("Natural-language goal or keyword matched with intent aliases across the tool catalog.")
+        .describe(
+          "Natural-language goal or keyword matched with intent aliases across the tool catalog.",
+        )
         .optional(),
       limit: z
         .number()
@@ -249,7 +266,9 @@ export class McpAdapter {
       };
     }
 
-    const candidates = registry.list().filter((tool) => (category ? tool.category === category : true));
+    const candidates = registry
+      .list()
+      .filter((tool) => (category ? tool.category === category : true));
     const ranked = search
       ? rankTools(search, candidates, limit)
       : candidates.slice(0, limit).map((tool) => ({
@@ -265,6 +284,7 @@ export class McpAdapter {
       signature: inputSignature(entry.tool.input),
       mutatesState: entry.tool.mutatesState === true,
       requiresClient: entry.tool.requiresClient !== false,
+      ai: entry.tool.ai,
       ...(search ? { score: Math.round(entry.score * 10) / 10, why: entry.why } : {}),
     }));
 
@@ -288,7 +308,9 @@ export class McpAdapter {
       keyword: z
         .string()
         .min(1)
-        .describe("Natural-language goal or keyword, e.g. 'find the player's money' or 'click a UI button'."),
+        .describe(
+          "Natural-language goal or keyword, e.g. 'find the player's money' or 'click a UI button'.",
+        ),
       limit: z
         .number()
         .int()
@@ -296,10 +318,7 @@ export class McpAdapter {
         .max(50)
         .optional()
         .describe("Maximum tools to return, default 10."),
-      category: z
-        .string()
-        .optional()
-        .describe("Optional: restrict to one category."),
+      category: z.string().optional().describe("Optional: restrict to one category."),
     });
 
     server.registerTool(
@@ -327,7 +346,9 @@ export class McpAdapter {
   private runSuggestTools(keyword: string, limit?: number, category?: string): unknown {
     const { registry, activity } = this.deps;
     const stats = new Map(activity.perToolStats().map((s) => [s.tool, s]));
-    const candidates = registry.list().filter((tool) => (category ? tool.category === category : true));
+    const candidates = registry
+      .list()
+      .filter((tool) => (category ? tool.category === category : true));
     const matches = rankTools(keyword, candidates, 50)
       .map((entry) => {
         const s = stats.get(entry.tool.name);
@@ -343,6 +364,7 @@ export class McpAdapter {
           signature: inputSignature(entry.tool.input),
           mutatesState: entry.tool.mutatesState === true,
           requiresClient: entry.tool.requiresClient !== false,
+          ai: entry.tool.ai,
           runs,
           errors,
           successRatio: Math.round(successRatio * 1000) / 1000,

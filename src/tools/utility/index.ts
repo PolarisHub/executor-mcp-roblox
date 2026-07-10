@@ -12,6 +12,9 @@ import saveInstance from "./save-instance.js";
 import messageBox from "./message-box.js";
 import toolSchema from "./tool-schema.js";
 import toolPlan from "./tool-plan.js";
+import agentContext from "./agent-context.js";
+import agentRun from "./agent-run.js";
+import agentMemory from "./agent-memory.js";
 
 /** Miscellaneous executor utilities (FastFlags, FPS cap, HWID, clipboard, teleport queue, saveinstance, messagebox). */
 export const utilityTools: Tool[] = [
@@ -27,4 +30,7 @@ export const utilityTools: Tool[] = [
   messageBox,
   toolSchema,
   toolPlan,
+  agentContext,
+  agentRun,
+  agentMemory,
 ];

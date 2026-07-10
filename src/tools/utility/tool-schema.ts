@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
+import { inferToolContract } from "../../application/tool/tool-contract.js";
 import {
   describeInputFields,
   inputSignature,
@@ -113,6 +114,7 @@ export default defineTool({
       const fields = describeInputFields(descriptor.input);
       const signature = inputSignature(descriptor.input);
       const camel = kebabToCamel(descriptor.name);
+      const contract = descriptor.ai ?? inferToolContract(descriptor);
       const exampleArgs = fields
         .filter((f) => !f.optional)
         .slice(0, 3)
@@ -128,6 +130,7 @@ export default defineTool({
           category: descriptor.category,
           mutatesState: descriptor.mutatesState,
           requiresClient: descriptor.requiresClient,
+          ai: contract,
           signature,
           args: fields,
           example,

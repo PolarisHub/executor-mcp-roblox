@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { ToolCategory } from "../../domain/tool/category.js";
-import type { Tool, ToolContext, ToolResult } from "./tool.js";
+import type { Tool, ToolContext, ToolResult, ToolContract } from "./tool.js";
+import { inferToolContract } from "./tool-contract.js";
 
 /**
  * Authoring helper that infers a tool's input type from its zod schema, so a tool
@@ -26,9 +27,10 @@ export function defineTool<S extends z.ZodType>(definition: {
   input: S;
   requiresClient?: boolean;
   mutatesState?: boolean;
+  ai?: Partial<ToolContract>;
   execute: (input: z.infer<S>, ctx: ToolContext) => Promise<ToolResult>;
 }): Tool<z.infer<S>> {
-  return {
+  const base = {
     name: definition.name,
     title: definition.title ?? definition.name,
     description: definition.description,
@@ -39,5 +41,10 @@ export function defineTool<S extends z.ZodType>(definition: {
     requiresClient: definition.requiresClient ?? true,
     mutatesState: definition.mutatesState ?? false,
     execute: definition.execute,
+  };
+  const inferred = inferToolContract(base);
+  return {
+    ...base,
+    ai: definition.ai ? { ...inferred, ...definition.ai } : inferred,
   };
 }

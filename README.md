@@ -2,11 +2,11 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **240 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
+It ships **243 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## What's in the box
 
-### Tools (240 across 21 categories)
+### Tools (243 across 21 categories)
 
 The big ones you'll reach for first:
 
@@ -22,6 +22,8 @@ The big ones you'll reach for first:
 - **Sessions.** Every tool call appends to a JSONL session trace; `session-list/show/replay` browse and re-execute past traces.
 - **Discovery aids.** `list-tools` browses the catalog by category. `suggest-tools` ranks matches by past success.
 - **AI planning.** `tool-plan` turns a natural-language goal into a schema-aware discover→act→verify workflow with ranked alternatives.
+- **Agent context.** `agent-context` bootstraps the current clients, selection, game, executor, and next actions in one read-only call.
+- **Agent runtime.** `agent-run` executes explicit workflows with dry runs, mutation approval, `$steps.*` references, retries, and automatic verification; `agent-memory` stores verified facts and successful workflow episodes.
 
 Run `list-tools` once connected for the full catalog, or `GET /api/tools/schema` for JSON schemas, or `GET /mcp.d.luau` for Luau type declarations any editor with a Luau LSP can consume.
 
@@ -30,7 +32,7 @@ Run `list-tools` once connected for the full catalog, or `GET /api/tools/schema`
 Open `http://localhost:16384/` once the server's running. Eight tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
-- **Tools** — category-grouped browser of all 239 tools with search.
+- **Tools** — category-grouped browser of all 242 tools with search.
 - **Activity** — live tool-call stream with text/category/outcome filters.
 - **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch.
 - **Brief** — Place/Game/JobId metadata, surface counts (RemoteEvent/Script/Tool), Local Player info, top remotes from the spy buffer, Discover Values button, Fanout-across-all-clients starter.
@@ -67,7 +69,7 @@ mcp.publish("scores", { score = 100 })
 
 `mcp.help(name?)` is the in-script equivalent of the top-level `tool-schema` tool: with a name it returns the full per-field detail; with no argument it returns every tool's compact signature. Use it before calling an unfamiliar tool instead of guessing arg shapes.
 
-For an ambiguous objective, start with `local plan = mcp.toolPlan({ goal = "find the player's money and verify it" })`. The planner returns ranked tools, exact signatures, mutation/client flags, and one or more discover→act→verify workflows. For multi-step tasks, use the selected tools inside one `script` call and branch on each result rather than assuming a step succeeded.
+At the start of a task, call `local context = mcp.agentContext()` to learn the active client, game, executor, and available capabilities. For an ambiguous objective, then use `local plan = mcp.toolPlan({ goal = "find the player's money and verify it" })`. The planner returns ranked tools, exact signatures, mutation/client flags, and one or more discover→act→verify workflows. For multi-step tasks, use the selected tools inside one `script` call and branch on each result rather than assuming a step succeeded.
 
 `mcp.parallel` is a real coroutine scheduler — every `mcp.*` call inside any of the passed functions yields a marker, the scheduler collects markers across all coroutines per round and batches them into ONE `rpc-batch`. A 5-step recipe across 5 coroutines runs in ~5 round trips, not 25.
 

@@ -73,6 +73,17 @@ export class ToolInvoker {
       category: tool.category,
       mutatesState: tool.mutatesState === true,
       requiresClient: tool.requiresClient !== false,
+      ai: tool.ai ?? {
+        phase: tool.mutatesState ? "act" : "observe",
+        prerequisites: tool.requiresClient === false ? [] : ["active-client"],
+        consumes: [],
+        produces: [],
+        verifiesWith: [],
+        alternatives: [],
+        requiresCapabilities: [],
+        sideEffects: tool.mutatesState ? ["writes live game/client state"] : [],
+        failureRecovery: [],
+      },
       input: tool.input,
     });
     return {

@@ -49,6 +49,19 @@ export interface SessionContext {
   resolve(): SelectionResolution;
 }
 
+/** Machine-readable planning hints consumed by AI orchestration and schema introspection. */
+export interface ToolContract {
+  readonly phase: "observe" | "act" | "verify" | "orchestrate";
+  readonly prerequisites: readonly string[];
+  readonly consumes: readonly string[];
+  readonly produces: readonly string[];
+  readonly verifiesWith: readonly string[];
+  readonly alternatives: readonly string[];
+  readonly requiresCapabilities: readonly string[];
+  readonly sideEffects: readonly string[];
+  readonly failureRecovery: readonly string[];
+}
+
 /**
  * Everything a tool is allowed to touch. The invoker builds a fresh context per
  * call: it resolves the active client up front (for client-bound tools) and binds
@@ -114,5 +127,7 @@ export interface Tool<I = unknown> {
   readonly requiresClient?: boolean;
   /** Whether the tool writes live game state (default false) — used for safety labeling. */
   readonly mutatesState?: boolean;
+  /** Optional/derived machine-readable planning contract for AI orchestration. */
+  readonly ai?: ToolContract;
   execute(input: I, ctx: ToolContext): Promise<ToolResult>;
 }
