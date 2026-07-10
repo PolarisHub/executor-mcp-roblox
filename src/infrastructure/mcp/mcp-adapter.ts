@@ -130,6 +130,7 @@ export class McpAdapter {
       `At the start of a task or after reconnects, call \`agent-context\` once. It reports connected clients, active ` +
         `selection, game identity, executor capabilities, and concrete next actions in one read-only brief. Do not ` +
         `assume the active place, JobId, executor, or capability set from an earlier task.`,
+      "Character fallback rule: if get-local-player-info reports characterRecovery, treat that as a live notification that the standard Character/Humanoid/HumanoidRootPart path is unavailable or custom. Do not retry the same path. Call discover-character, search-instances, or script to search the actual game, then pass the returned model, Humanoid, and root-part paths into later tools. The recovery payload includes a bounded custom Luau script you can run or adapt.",
       `For closed-loop execution, use \`agent-run\` with explicit ordered steps. Start with \`dryRun:true\`; keep ` +
         `\`allowMutations:false\` until the target is confirmed. Pass earlier outputs forward with ` +
         `\`$steps.stepId.data.field\`, and let contract verifiers prove mutations. Store verified place-specific facts ` +

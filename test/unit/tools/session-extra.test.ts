@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LuauOptions, ToolContext } from "../../../src/application/tool/tool.js";
 import getPlayers from "../../../src/tools/session/get-players.js";
 import getLocalPlayerInfo from "../../../src/tools/session/get-local-player-info.js";
+import discoverCharacter from "../../../src/tools/session/discover-character.js";
 import getPlaceDetails from "../../../src/tools/session/get-place-details.js";
 import { sessionTools } from "../../../src/tools/session/index.js";
 
@@ -53,8 +54,8 @@ function mockContext(returnValue: unknown = { ok: true }): ToolContext & {
 }
 
 describe("Session & Client tools", () => {
-  it("registers all 7 tools in the category index, each tagged correctly", () => {
-    expect(sessionTools).toHaveLength(7);
+  it("registers all 8 tools in the category index, each tagged correctly", () => {
+    expect(sessionTools).toHaveLength(8);
     for (const tool of sessionTools) {
       expect(tool.category).toBe("Session & Client");
       // Every Session & Client tool is read-only.
@@ -69,6 +70,7 @@ describe("Session & Client tools", () => {
       "get-active-client",
       "get-players",
       "get-local-player-info",
+      "discover-character",
       "get-place-details",
     ]);
   });
@@ -108,7 +110,11 @@ describe("Session & Client tools", () => {
 
   describe("get-local-player-info", () => {
     it("snapshots player + character with the 20s timeout, no setthreadidentity", async () => {
-      const decoded = { ok: true, player: { Name: "Me" }, character: null };
+      const decoded: Record<string, unknown> = {
+        ok: true,
+        player: { Name: "Me" },
+        character: null,
+      };
       const ctx = mockContext(decoded);
 
       const result = await getLocalPlayerInfo.execute({ threadContext: 2 }, ctx);
@@ -122,6 +128,27 @@ describe("Session & Client tools", () => {
       expect(source).toContain("Players.LocalPlayer");
       expect(source).toContain('FindFirstChildOfClass("Humanoid")');
       expect(source).toContain("HumanoidRootPart");
+      expect(result.summary).toContain("discover-character");
+      expect(decoded["characterRecovery"]).toMatchObject({
+        status: "missing-or-custom",
+        nextTools: ["discover-character", "search-instances", "script"],
+      });
+    });
+  });
+
+  describe("discover-character", () => {
+    it("searches custom models with a bounded scan and returns a recovery summary", async () => {
+      const decoded = { ok: true, found: true, resolved: { model: "Workspace.Avatar" } };
+      const ctx = mockContext(decoded);
+
+      const result = await discoverCharacter.execute({ scanWorkspace: true, limit: 120 }, ctx);
+
+      expect(result.data).toBe(decoded);
+      expect(result.summary).toContain("bounded custom-model fallbacks");
+      expect(ctx.calls[0]?.options?.timeoutMs).toBe(30000);
+      expect(ctx.calls[0]?.source).toContain("HumanoidRootPart");
+      expect(ctx.calls[0]?.source).toContain("Workspace search");
+      expect(ctx.calls[0]?.source).toContain("local limit = 120");
     });
   });
 

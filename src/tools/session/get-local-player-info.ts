@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
+import { characterRecoveryNotice } from "../_shared/character-recovery.js";
 import { REFLECT_PRELUDE } from "../_shared/reflection.js";
 
 export default defineTool({
@@ -79,13 +80,43 @@ do
   end
 end
 
+if character == nil or character.Health == nil or character.Position == nil then
+  pcall(function()
+    warn("[executor-mcp-roblox] Standard character path is missing or incomplete; custom character discovery is required.")
+  end)
+end
+
 return {
   ok = true,
   player = player,
   character = character,
 }
 `;
-    const data = await ctx.runLuau(source, { threadContext, timeoutMs: 20000 });
+    const data = (await ctx.runLuau(source, { threadContext, timeoutMs: 20000 })) as Record<
+      string,
+      unknown
+    > | null;
+    const character = data?.["character"];
+    const characterRecord =
+      character && typeof character === "object" && !Array.isArray(character)
+        ? (character as Record<string, unknown>)
+        : null;
+    const missing: string[] = [];
+    if (character === null || character === undefined) missing.push("character");
+    if (characterRecord?.["Health"] === undefined) missing.push("Humanoid");
+    if (characterRecord?.["Position"] === undefined) {
+      missing.push("HumanoidRootPart");
+    }
+    if (data?.["ok"] === true && missing.length > 0) {
+      data["characterRecovery"] = characterRecoveryNotice(missing);
+      return {
+        data,
+        summary:
+          "Character data is missing (" +
+          missing.join(", ") +
+          "). Run discover-character or search the live game with a custom script; do not retry the standard path blindly.",
+      };
+    }
     return { data };
   },
 });
