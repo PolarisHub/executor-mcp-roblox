@@ -398,7 +398,7 @@ describe("ToolInvoker", () => {
     });
     registry.register(
       defineTool({
-        name: "explain-failure",
+        name: "assert-state",
         description: "Returns a handled failure.",
         category: "Intelligence",
         input: z.object({}),
@@ -410,17 +410,24 @@ describe("ToolInvoker", () => {
     );
 
     const result = await new ToolInvoker(deps).invoke({
-      toolName: "explain-failure",
+      toolName: "assert-state",
       input: {},
       sessionId: SID,
       sessionLabel: LABEL,
     });
 
     expect(result.isError).toBe(true);
+    expect(result.data).toMatchObject({
+      status: "failed",
+      recovery: {
+        retryPolicy: { retrySameInput: false },
+        fallbackTools: expect.any(Array),
+      },
+    });
     expect(records[0]).toMatchObject({
       outcome: "error",
       errorCode: "TOOL_ERROR",
-      intelligence: { phase: "recover", status: "failed" },
+      intelligence: { phase: "verify", status: "failed" },
     });
     expect(traces[0]?.error?.code).toBe("TOOL_ERROR");
   });

@@ -2,11 +2,11 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **244 tools** across 21 categories, a dashboard with eight tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
+It ships **252 tools** across 22 categories, a dashboard with ten tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## What's in the box
 
-### Tools (244 across 21 categories)
+### Tools (252 across 22 categories)
 
 The big ones you'll reach for first:
 
@@ -24,16 +24,20 @@ The big ones you'll reach for first:
 - **AI planning.** `tool-plan` turns a natural-language goal into a schema-aware discover→act→verify workflow with ranked alternatives.
 - **Agent context.** `agent-context` bootstraps the current clients, selection, game, executor, and next actions in one read-only call.
 - **Agent runtime.** `agent-run` executes explicit workflows with dry runs, mutation approval, `$steps.*` references, retries, and automatic verification; `agent-memory` stores verified facts and successful workflow episodes.
+- **World Brain.** `observe-world` fuses the live character, camera, visible GUI, nearby objects, interactables, and tools into bounded semantic handles; `resolve-entity` safely revalidates or rediscovers stale handles.
+- **Verified adaptive tasks.** `smart-task` adds plan/preview/execute modes, hard budgets, loop detection, typed recovery branches, and real `assert-state` postconditions. `explain-failure` classifies errors and ranks safe fallbacks without blindly repeating mutations.
+- **Rollback and learning.** `state-transaction` restores explicitly captured reversible state, `world-delta` streams bounded event changes, and `teach-mode` turns a user demonstration into a conservative reviewable playbook.
 
 Run `list-tools` once connected for the full catalog, or `GET /api/tools/schema` for JSON schemas, or `GET /mcp.d.luau` for Luau type declarations any editor with a Luau LSP can consume.
 
 ### Dashboard
 
-Open `http://localhost:16384/` once the server's running. Eight tabs, flat-dark, sub-100ms live updates over WebSocket:
+Open `http://localhost:16384/` once the server's running. Ten tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
-- **Tools** — category-grouped browser of all 242 tools with search.
+- **Tools** — category-grouped browser of all 252 tools with search.
 - **Activity** — live tool-call stream with text/category/outcome filters.
+- **Intelligence** — bounded live perceive→resolve→act→verify/recover timeline with targets, confidence, evidence, rollback, and teaching state.
 - **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch.
 - **Brief** — Place/Game/JobId metadata, surface counts (RemoteEvent/Script/Tool), Local Player info, top remotes from the spy buffer, Discover Values button, Fanout-across-all-clients starter.
 - **Spy** — paginated table of captured remote calls with copy-as-`mcp.fire` snippets and a filter.
@@ -191,7 +195,7 @@ test/              unit + integration + helpers
 
 | Command                     |                                                                 |
 | --------------------------- | --------------------------------------------------------------- |
-| `pnpm verify`               | typecheck, lint, and all 289 tests. What CI runs.               |
+| `pnpm verify`               | typecheck, lint, and all 379 tests. What CI runs.               |
 | `pnpm test`                 | Vitest (`test:coverage` / `test:watch` variants exist).         |
 | `pnpm build`                | Compile to `dist/`.                                             |
 | `pnpm dev`                  | Run the server under `tsx watch`.                               |

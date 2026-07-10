@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  LuauOptions,
-  ToolContext,
-  ToolResult,
-} from "../../../src/application/tool/tool.js";
+import type { LuauOptions, ToolContext, ToolResult } from "../../../src/application/tool/tool.js";
 import teachMode from "../../../src/tools/intelligence/teach-mode.js";
 
 interface LuauCall {
@@ -48,7 +44,7 @@ function stubContext(options: {
 describe("teach-mode", () => {
   it("exposes orchestration metadata and bounded defaults", () => {
     expect(teachMode.name).toBe("teach-mode");
-    expect(teachMode.category).toBe("Instrumentation");
+    expect(teachMode.category).toBe("Intelligence");
     expect(teachMode.mutatesState).toBe(true);
     expect(teachMode.ai?.phase).toBe("orchestrate");
     expect(teachMode.ai?.produces).toContain("Bounded chronological event timeline");
@@ -84,7 +80,7 @@ describe("teach-mode", () => {
     expect(result.isError).not.toBe(true);
     expect(result.summary).toContain("Teach-mode is recording");
     const data = result.data as Record<string, unknown>;
-    expect(data.remoteSpyIntegration).toMatchObject({
+    expect(data["remoteSpyIntegration"]).toMatchObject({
       requested: false,
       enabled: false,
       status: "disabled",
@@ -95,11 +91,17 @@ describe("teach-mode", () => {
     expect(source).toContain("maxEvents = 120");
     expect(source).toContain("movementThrottleSeconds = 75 / 1000");
     expect(source).toContain("buffer = {}");
+    expect(source).toContain("index = ((session.head + session.size - 1) % session.maxEvents) + 1");
+    expect(source).not.toContain(
+      "index = ((session.head + session.size - 2) % session.maxEvents) + 1",
+    );
     expect(source).toContain("session.head = (session.head % session.maxEvents) + 1");
     expect(source).toContain("UserInputService.InputBegan");
     expect(source).toContain("UserInputService.InputChanged");
     expect(source).toContain("instance.Activated");
     expect(source).toContain("ProximityPromptService.PromptTriggered");
+    expect(source).toContain("local scanned, scanCap = 0, session.maxGuiWatch * 4");
+    expect(source).not.toContain("playerGui:GetDescendants()");
     expect(source).toContain("localPlayer.CharacterAdded");
     expect(source).toContain('kind = "tool_equipped"');
     expect(source).toContain("task.delay");
@@ -133,7 +135,7 @@ describe("teach-mode", () => {
     ]);
     expect(luauCalls[0]?.source).toContain("remoteSpyEnabled = true");
     expect(luauCalls[0]?.source).toContain("remoteSpyOwned = true");
-    expect((result.data as Record<string, unknown>).remoteSpyIntegration).toMatchObject({
+    expect((result.data as Record<string, unknown>)["remoteSpyIntegration"]).toMatchObject({
       enabled: true,
       owned: true,
       status: "started",
@@ -150,9 +152,7 @@ describe("teach-mode", () => {
         startedAt: 100,
         remoteSpyEnabled: true,
         remoteSpyOwned: true,
-        events: [
-          { seq: 7, t: 2.5, kind: "input_began", inputType: "Keyboard", keyCode: "E" },
-        ],
+        events: [{ seq: 7, t: 2.5, kind: "input_began", inputType: "Keyboard", keyCode: "E" }],
       },
       availableTools: ["trace-remote-traffic"],
       async invoke(_name, input) {
@@ -184,7 +184,7 @@ describe("teach-mode", () => {
     expect(invokeCalls).toHaveLength(1);
     const data = result.data as { events: Array<Record<string, unknown>> };
     expect(data.events).toHaveLength(2);
-    expect(data.events.map((event) => event.kind)).toEqual(["input_began", "remote_call"]);
+    expect(data.events.map((event) => event["kind"])).toEqual(["input_began", "remote_call"]);
     expect(data.events[1]).toMatchObject({
       t: 4,
       remoteId: "remote:104:FireServer:ReplicatedStorage.Remotes.Buy",
@@ -204,8 +204,7 @@ describe("teach-mode", () => {
       name: "Open",
       className: "ProximityPrompt",
       path: "Workspace.Door.Open",
-      expression:
-        'game:GetService("Workspace"):FindFirstChild("Door"):FindFirstChild("Open")',
+      expression: 'game:GetService("Workspace"):FindFirstChild("Door"):FindFirstChild("Open")',
     };
     const { ctx, luauCalls } = stubContext({
       luauResult: {
@@ -221,9 +220,25 @@ describe("teach-mode", () => {
         events: [
           { seq: 1, t: 0.1, kind: "character_ready", target: { name: "User", className: "Model" } },
           { seq: 2, t: 0.2, kind: "gui_appeared", target: button },
-          { seq: 3, t: 0.8, kind: "input_began", inputId: 1, inputType: "MouseButton1", x: 50, y: 70 },
+          {
+            seq: 3,
+            t: 0.8,
+            kind: "input_began",
+            inputId: 1,
+            inputType: "MouseButton1",
+            x: 50,
+            y: 70,
+          },
           { seq: 4, t: 0.85, kind: "gui_activated", target: button },
-          { seq: 5, t: 0.9, kind: "input_ended", inputId: 1, inputType: "MouseButton1", x: 50, y: 70 },
+          {
+            seq: 5,
+            t: 0.9,
+            kind: "input_ended",
+            inputId: 1,
+            inputType: "MouseButton1",
+            x: 50,
+            y: 70,
+          },
           { seq: 6, t: 2, kind: "proximity_triggered", target: prompt },
           { seq: 7, t: 3, kind: "input_began", inputId: 2, inputType: "Keyboard", keyCode: "E" },
           { seq: 8, t: 3.2, kind: "input_ended", inputId: 2, inputType: "Keyboard", keyCode: "E" },
@@ -243,18 +258,19 @@ describe("teach-mode", () => {
       autoExecutable: false,
       manualReviewRequired: true,
     });
-    const steps = playbook.steps as Array<Record<string, unknown>>;
-    const tools = steps.map((step) => (step.candidate as Record<string, unknown>).tool);
+    const steps = playbook["steps"] as Array<Record<string, unknown>>;
+    const tools = steps.map((step) => (step["candidate"] as Record<string, unknown>)["tool"]);
     expect(tools).toEqual(["click-button", "fire-proximity-prompt", "virtual-input"]);
     expect(tools.filter((tool) => tool === "virtual-input")).toHaveLength(1);
-    const clickGuards = steps[0]?.guards as Array<Record<string, unknown>>;
-    expect(clickGuards.map((guard) => guard.type)).toEqual(
+    const clickGuards = steps[0]?.["guards"] as Array<Record<string, unknown>>;
+    expect(clickGuards.map((guard) => guard["type"])).toEqual(
       expect.arrayContaining(["target-exists", "target-visible", "character-ready"]),
     );
-    const sourceDraft = playbook.sourceDraft as string;
+    const sourceDraft = playbook["sourceDraft"] as string;
     expect(sourceDraft).toContain('mcp.call("click-button"');
     expect(sourceDraft).toContain('mcp.call("fire-proximity-prompt"');
     expect(sourceDraft).toContain('mcp.call("virtual-input"');
+    expect(sourceDraft).toContain("[=[${button_path_1}]=]");
     expect(sourceDraft).toContain("REVIEW REQUIRED");
   });
 
@@ -303,18 +319,18 @@ describe("teach-mode", () => {
 
     expect(invokeActions).toEqual(["fetch", "stop"]);
     const playbook = (result.data as { playbook: Record<string, unknown> }).playbook;
-    const steps = playbook.steps as Array<Record<string, unknown>>;
+    const steps = playbook["steps"] as Array<Record<string, unknown>>;
     expect(steps).toHaveLength(1);
-    expect(steps[0]?.candidate).toMatchObject({ tool: "fire-remote" });
-    expect(steps[0]?.confidence).toBe("low");
-    expect(playbook.uncertainty).toMatchObject({ overall: "high" });
-    expect(playbook.manualReviewFlags).toEqual(
+    expect(steps[0]?.["candidate"]).toMatchObject({ tool: "fire-remote" });
+    expect(steps[0]?.["confidence"]).toBe("low");
+    expect(playbook["uncertainty"]).toMatchObject({ overall: "high" });
+    expect(playbook["manualReviewFlags"]).toEqual(
       expect.arrayContaining([expect.stringContaining("argument list was truncated")]),
     );
-    const sourceDraft = playbook.sourceDraft as string;
+    const sourceDraft = playbook["sourceDraft"] as string;
     expect(sourceDraft).toContain("OMITTED step-1: fire-remote");
     expect(sourceDraft).not.toContain('mcp.call("fire-remote"');
-    expect((result.data as Record<string, unknown>).remoteSpyCleanup).toMatchObject({
+    expect((result.data as Record<string, unknown>)["remoteSpyCleanup"]).toMatchObject({
       released: true,
       method: "invokeTool",
     });

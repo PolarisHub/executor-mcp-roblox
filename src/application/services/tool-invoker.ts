@@ -24,6 +24,7 @@ import type { HostServices, ToolContext, ToolResult } from "../tool/tool.js";
 import type { ToolRegistry } from "../tool/registry.js";
 import type { ScriptBridge } from "./script-bridge.js";
 import type { SessionManager } from "./session-manager.js";
+import { classifyFailure } from "./recovery-intelligence.js";
 
 export interface ToolInvokerDeps {
   readonly registry: ToolRegistry;
@@ -118,6 +119,12 @@ function intelligenceDigest(
     ...(evidence !== undefined ? { evidenceCount: evidence } : {}),
     ...(compactSummary ? { summary: compactSummary } : {}),
   };
+}
+
+function attachFailureRecovery(dataValue: unknown, recovery: unknown): Record<string, unknown> {
+  const data = objectValue(dataValue);
+  if (data?.["recovery"] !== undefined) return data;
+  return data ? { ...data, recovery } : { result: dataValue, recovery };
 }
 
 /**
@@ -294,7 +301,25 @@ export class ToolInvoker {
       );
     };
     try {
-      const result = await tool.execute(parsed.data, context);
+      const executed = await tool.execute(parsed.data, context);
+      const result =
+        executed.isError && tool.name !== "explain-failure"
+          ? {
+              ...executed,
+              data: attachFailureRecovery(
+                executed.data,
+                classifyFailure(
+                  {
+                    toolName: tool.name,
+                    error: executed.summary,
+                    result: executed.data,
+                    attemptedInput: parsed.data,
+                  },
+                  context.tools,
+                ),
+              ),
+            }
+          : executed;
       const elapsed = clock.monotonic() - startedAt;
       const outcome = result.isError ? "error" : "ok";
       const insight = intelligenceDigest(tool.name, result.data, result.summary);

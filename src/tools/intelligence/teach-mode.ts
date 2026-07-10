@@ -124,7 +124,7 @@ if (not restored) and type(state.hook) == "function" and type(restorefunction) =
   restored = ok
   if not ok then restoreError = tostring(err) end
 end
-getgenv().__mcp_remoteTrace = nil
+if restored then getgenv().__mcp_remoteTrace = nil end
 return { restored = restored, restoreError = restoreError, fallback = true }
 `;
 
@@ -210,7 +210,7 @@ function normalizeRemoteEvents(
         name: remote.split(".").at(-1),
       },
       method,
-      args: Array.isArray(entry["args"] as unknown) ? entry["args"] : [],
+      args: Array.isArray(entry["args"]) ? entry["args"] : [],
       argCount: asNumber(entry["argCount"]),
       argsTruncated: entry["argsTruncated"] === true,
       blocked: entry["blocked"] === true,
@@ -291,31 +291,45 @@ function eventKey(event: UnknownRecord): string {
   );
 }
 
-function toLuau(value: unknown): string {
+function toLuau(value: unknown, parameterTypes: ReadonlyMap<string, string>): string {
   if (value === null || value === undefined) return "nil";
-  if (typeof value === "string") return q(value);
+  if (typeof value === "string") {
+    const match = /^\$\{([^}]+)\}$/.exec(value);
+    if (match) {
+      return parameterTypes.get(match[1]!) === "number" ? value : `[=[${value}]=]`;
+    }
+    return q(value);
+  }
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "0";
-  if (Array.isArray(value)) return `{ ${value.map(toLuau).join(", ")} }`;
+  if (Array.isArray(value)) {
+    return `{ ${value.map((item) => toLuau(item, parameterTypes)).join(", ")} }`;
+  }
   const record = asRecord(value);
   if (!record) return "nil";
   return `{ ${Object.entries(record)
-    .map(([key, item]) => `[${q(key)}] = ${toLuau(item)}`)
+    .map(([key, item]) => `[${q(key)}] = ${toLuau(item, parameterTypes)}`)
     .join(", ")} }`;
 }
 
-function buildSourceDraft(steps: readonly UnknownRecord[]): string {
+function buildSourceDraft(
+  steps: readonly UnknownRecord[],
+  parameters: readonly UnknownRecord[],
+): string {
+  const parameterTypes = new Map(
+    parameters.map((parameter) => [String(parameter["name"]), String(parameter["type"])]),
+  );
   const lines = [
     "-- REVIEW REQUIRED: teach-mode inferred correlation and ordering, not the user's intent.",
     "-- Validate selectors, timing, guards, and all server-reaching operations before saving or running.",
     "local results = {}",
     "local function guardTarget(expression, expectedClass)",
-    "  local loader, loadErr = loadstring(\"return \" .. expression)",
+    '  local loader, loadErr = loadstring("return " .. expression)',
     "  if not loader then return false, loadErr end",
     "  local ok, target = pcall(loader)",
-    "  if not ok or typeof(target) ~= \"Instance\" then return false, tostring(target) end",
-    "  if expectedClass and expectedClass ~= \"\" and not target:IsA(expectedClass) then",
-    "    return false, \"expected \" .. expectedClass .. \", got \" .. target.ClassName",
+    '  if not ok or typeof(target) ~= "Instance" then return false, tostring(target) end',
+    '  if expectedClass and expectedClass ~= "" and not target:IsA(expectedClass) then',
+    '    return false, "expected " .. expectedClass .. ", got " .. target.ClassName',
     "  end",
     "  return true",
     "end",
@@ -336,7 +350,7 @@ function buildSourceDraft(steps: readonly UnknownRecord[]): string {
     if (waitMs > 0) lines.push(`task.wait(${(waitMs / 1000).toFixed(3)})`);
     if (pathPlaceholder && expectedClass) {
       lines.push(
-        `do local ok, err = guardTarget(${q(pathPlaceholder)}, ${q(expectedClass)}); if not ok then error(${q(
+        `do local ok, err = guardTarget(${toLuau(pathPlaceholder, parameterTypes)}, ${q(expectedClass)}); if not ok then error(${q(
           `${id} guard failed: `,
         )} .. tostring(err)) end end`,
       );
@@ -348,7 +362,7 @@ function buildSourceDraft(steps: readonly UnknownRecord[]): string {
       );
       continue;
     }
-    lines.push(`results[${q(id)}] = mcp.call(${q(tool)}, ${toLuau(input)})`);
+    lines.push(`results[${q(id)}] = mcp.call(${q(tool)}, ${toLuau(input, parameterTypes)})`);
   }
   lines.push("return { draft = true, results = results }");
   return lines.join("\n");
@@ -392,7 +406,10 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
     return `\${${name}}`;
   };
 
-  const inferredGuards = (event: UnknownRecord, selector: UnknownRecord | null): UnknownRecord[] => {
+  const inferredGuards = (
+    event: UnknownRecord,
+    selector: UnknownRecord | null,
+  ): UnknownRecord[] => {
     const guards: UnknownRecord[] = [];
     if (selector) {
       guards.push({
@@ -580,7 +597,8 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
         "Remote replay can mutate server state and is intentionally omitted from the executable source draft.",
         "Remote arguments are shallow observations and may not preserve identity or nested table structure.",
       ];
-      if (event["argsTruncated"] === true) remoteFlags.push("The remote argument list was truncated.");
+      if (event["argsTruncated"] === true)
+        remoteFlags.push("The remote argument list was truncated.");
       addStep(
         event,
         "fire-remote",
@@ -625,13 +643,27 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
     }
 
     if (
-      (inputType === "MouseButton1" || inputType === "MouseButton2" || inputType === "MouseButton3") &&
+      (inputType === "MouseButton1" ||
+        inputType === "MouseButton2" ||
+        inputType === "MouseButton3") &&
       kind === "input_began"
     ) {
       const t = asNumber(event["t"]);
       if (guiActivationTimes.some((activation) => Math.abs(activation - t) <= 0.35)) continue;
-      const x = parameter("mouse_x", "number", asNumber(event["x"]), event, "Observed viewport X coordinate.");
-      const y = parameter("mouse_y", "number", asNumber(event["y"]), event, "Observed viewport Y coordinate.");
+      const x = parameter(
+        "mouse_x",
+        "number",
+        asNumber(event["x"]),
+        event,
+        "Observed viewport X coordinate.",
+      );
+      const y = parameter(
+        "mouse_y",
+        "number",
+        asNumber(event["y"]),
+        event,
+        "Observed viewport Y coordinate.",
+      );
       addStep(
         event,
         "virtual-input",
@@ -640,19 +672,37 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
           x,
           y,
           button:
-            inputType === "MouseButton2" ? "Right" : inputType === "MouseButton3" ? "Middle" : "Left",
+            inputType === "MouseButton2"
+              ? "Right"
+              : inputType === "MouseButton3"
+                ? "Middle"
+                : "Left",
           buttonAction: endEvent ? "click" : "down",
           holdSec,
         },
         "low",
-        ["Screen coordinates are resolution/layout dependent; prefer a semantic GUI selector when possible."],
+        [
+          "Screen coordinates are resolution/layout dependent; prefer a semantic GUI selector when possible.",
+        ],
       );
       continue;
     }
 
     if (inputType === "Touch") {
-      const x = parameter("touch_x", "number", asNumber(event["x"]), event, "Observed touch X coordinate.");
-      const y = parameter("touch_y", "number", asNumber(event["y"]), event, "Observed touch Y coordinate.");
+      const x = parameter(
+        "touch_x",
+        "number",
+        asNumber(event["x"]),
+        event,
+        "Observed touch X coordinate.",
+      );
+      const y = parameter(
+        "touch_y",
+        "number",
+        asNumber(event["y"]),
+        event,
+        "Observed touch Y coordinate.",
+      );
       addStep(
         event,
         "virtual-input",
@@ -661,7 +711,8 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
           x,
           y,
           touchId: asNumber(event["inputId"]),
-          touchState: kind === "input_ended" ? "End" : kind === "input_changed" ? "Change" : "Begin",
+          touchState:
+            kind === "input_ended" ? "End" : kind === "input_changed" ? "Change" : "Begin",
         },
         "low",
         ["Touch identifiers and coordinates may differ on another device or viewport."],
@@ -686,22 +737,30 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
     );
   }
   const dropped = asNumber(data["dropped"]);
-  if (dropped > 0) manualFlags.push(`${dropped} oldest event(s) were overwritten by the bounded ring buffer.`);
+  if (dropped > 0)
+    manualFlags.push(`${dropped} oldest event(s) were overwritten by the bounded ring buffer.`);
   const stats = asRecord(data["stats"]);
   if (stats?.["guiWatchTruncated"] === true) {
     manualFlags.push("The bounded GUI watcher cap was reached; some UI transitions may be absent.");
   }
   if (stats?.["connectionLimitReached"] === true) {
-    manualFlags.push("The listener cap was reached; later dynamic objects may not have been observed.");
+    manualFlags.push(
+      "The listener cap was reached; later dynamic objects may not have been observed.",
+    );
   }
-  if (steps.length === 0) manualFlags.push("No replay candidate was inferred from the retained events.");
+  if (steps.length === 0)
+    manualFlags.push("No replay candidate was inferred from the retained events.");
 
   const finalFlags = unique(manualFlags);
   const defaultParams = Object.fromEntries(
-    parameters.map((parameterRecord) => [String(parameterRecord["name"]), parameterRecord["default"]]),
+    parameters.map((parameterRecord) => [
+      String(parameterRecord["name"]),
+      parameterRecord["default"],
+    ]),
   );
   const highRisk = steps.some(
-    (step) => asRecord(step["candidate"])?.["tool"] === "fire-remote" || step["confidence"] === "low",
+    (step) =>
+      asRecord(step["candidate"])?.["tool"] === "fire-remote" || step["confidence"] === "low",
   );
 
   return {
@@ -715,7 +774,7 @@ function generatePlaybook(data: UnknownRecord): UnknownRecord {
     parameters,
     defaultParams,
     steps,
-    sourceDraft: buildSourceDraft(steps),
+    sourceDraft: buildSourceDraft(steps, parameters),
     saveCandidate: {
       tool: "playbook-save",
       inputTemplate: {
@@ -772,7 +831,7 @@ local function restoreRemoteTrace()
   if (not restored) and type(trace.hook) == "function" and type(restorefunction) == "function" then
     restored = pcall(restorefunction, trace.hook)
   end
-  genv.__mcp_remoteTrace = nil
+  if restored then genv.__mcp_remoteTrace = nil end
   return restored
 end
 
@@ -829,7 +888,21 @@ for id, session in pairs(state.sessions) do
     if not oldestSession or session.startedAt < oldestSession.startedAt then oldestId, oldestSession = id, session end
   end
 end
+local inheritedRemoteOwnership = false
 if activeCount >= 3 and oldestSession then
+  if oldestSession.remoteSpyOwned and ${options.remoteSpyEnabled ? "true" : "false"} then
+    local hasOtherRemoteSession = false
+    for _, candidate in pairs(state.sessions) do
+      if candidate ~= oldestSession and candidate.active and candidate.remoteSpyEnabled then
+        hasOtherRemoteSession = true
+        break
+      end
+    end
+    if not hasOtherRemoteSession then
+      oldestSession.remoteSpyOwned = false
+      inheritedRemoteOwnership = true
+    end
+  end
   disconnectSession(oldestSession, "evicted-by-session-cap", true)
   state.sessions[oldestId] = nil
   expiredSessions[#expiredSessions + 1] = oldestId
@@ -859,7 +932,7 @@ local session = {
   maxGuiWatch = ${options.maxGuiWatch},
   guiWatchCount = 0,
   remoteSpyEnabled = ${options.remoteSpyEnabled ? "true" : "false"},
-  remoteSpyOwned = ${options.remoteSpyOwned ? "true" : "false"},
+  remoteSpyOwned = ${options.remoteSpyOwned ? "true" : "false"} or inheritedRemoteOwnership,
   stats = { kindCounts = {}, guiWatchTruncated = false, connectionLimitReached = false },
 }
 state.sessions[sessionId] = session
@@ -874,7 +947,7 @@ local function push(event)
   event.t = math.max(0, at - session.startedAt)
   local index
   if session.size < session.maxEvents then
-    index = ((session.head + session.size - 2) % session.maxEvents) + 1
+    index = ((session.head + session.size - 1) % session.maxEvents) + 1
     session.size = session.size + 1
   else
     index = session.head
@@ -1008,6 +1081,13 @@ local UserInputService = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local localPlayer = Players.LocalPlayer
 
+push({
+  kind = "session_started",
+  character = localPlayer and selector(localPlayer.Character) or nil,
+  maxEvents = session.maxEvents,
+  movementThrottleMs = ${options.movementThrottleMs},
+})
+
 connect(UserInputService.InputBegan, function(input, gameProcessed)
   local event = inputSnapshot(input, gameProcessed)
   event.kind = "input_began"
@@ -1074,10 +1154,23 @@ end
 if localPlayer then
   local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui") or localPlayer:WaitForChild("PlayerGui", 5)
   if playerGui then
-    local descendants = playerGui:GetDescendants()
-    for _, descendant in ipairs(descendants) do
-      if session.guiWatchCount >= session.maxGuiWatch then session.stats.guiWatchTruncated = true break end
-      if relevantGui(descendant) then watchGui(descendant) end
+    local queue, queueIndex = { playerGui }, 1
+    local scanned, scanCap = 0, session.maxGuiWatch * 4
+    while queueIndex <= #queue and scanned < scanCap and session.guiWatchCount < session.maxGuiWatch do
+      local parent = queue[queueIndex]
+      queueIndex = queueIndex + 1
+      local children = parent:GetChildren()
+      for _, descendant in ipairs(children) do
+        scanned = scanned + 1
+        if relevantGui(descendant) then watchGui(descendant) end
+        if scanned < scanCap and session.guiWatchCount < session.maxGuiWatch then
+          queue[#queue + 1] = descendant
+        end
+        if scanned >= scanCap or session.guiWatchCount >= session.maxGuiWatch then break end
+      end
+    end
+    if queueIndex <= #queue or scanned >= scanCap or session.guiWatchCount >= session.maxGuiWatch then
+      session.stats.guiWatchTruncated = true
     end
     connect(playerGui.DescendantAdded, function(descendant)
       if relevantGui(descendant) then
@@ -1123,13 +1216,6 @@ if localPlayer then
     end)
   end
 end
-
-push({
-  kind = "session_started",
-  character = localPlayer and selector(localPlayer.Character) or nil,
-  maxEvents = session.maxEvents,
-  movementThrottleMs = ${options.movementThrottleMs},
-})
 
 local scheduleExpiry
 scheduleExpiry = function(delaySeconds)
@@ -1196,7 +1282,7 @@ local function restoreRemoteTrace()
   if (not restored) and type(trace.hook) == "function" and type(restorefunction) == "function" then
     restored = pcall(restorefunction, trace.hook)
   end
-  genv.__mcp_remoteTrace = nil
+  if restored then genv.__mcp_remoteTrace = nil end
   return restored
 end
 
@@ -1255,7 +1341,7 @@ local function push(event)
   event.t = math.max(0, at - session.startedAt)
   local index
   if session.size < session.maxEvents then
-    index = ((session.head + session.size - 2) % session.maxEvents) + 1
+    index = ((session.head + session.size - 1) % session.maxEvents) + 1
     session.size = session.size + 1
   else
     index = session.head
@@ -1387,7 +1473,7 @@ export default defineTool({
     "remote candidates, inferred waits/guards, placeholders, uncertainty, and manual-review flags. It does not claim " +
     "perfect intent inference. cancel disconnects and discards. Idle sessions self-expire and a three-session cap " +
     "evicts the oldest recorder to prevent leaked listeners.",
-  category: "Instrumentation",
+  category: "Intelligence",
   mutatesState: true,
   ai: {
     phase: "orchestrate",
@@ -1453,7 +1539,9 @@ export default defineTool({
       .max(5000)
       .optional()
       .default(1000)
-      .describe("start only: circular timeline capacity; oldest events are overwritten and counted."),
+      .describe(
+        "start only: circular timeline capacity; oldest events are overwritten and counted.",
+      ),
     movementThrottleMs: z
       .number()
       .int()
@@ -1477,14 +1565,18 @@ export default defineTool({
       .max(1000)
       .optional()
       .default(350)
-      .describe("start only: cap on watched GuiObjects/ScreenGuis to keep listener overhead bounded."),
+      .describe(
+        "start only: cap on watched GuiObjects/ScreenGuis to keep listener overhead bounded.",
+      ),
     sinceSeq: z
       .number()
       .int()
       .nonnegative()
       .optional()
       .default(0)
-      .describe("poll only: return retained local events whose sequence is greater than this cursor."),
+      .describe(
+        "poll only: return retained local events whose sequence is greater than this cursor.",
+      ),
     limit: z
       .number()
       .int()
@@ -1513,7 +1605,9 @@ export default defineTool({
       .nonnegative()
       .optional()
       .default(0)
-      .describe("poll only: omit remote events at or before this many seconds since recording start."),
+      .describe(
+        "poll only: omit remote events at or before this many seconds since recording start.",
+      ),
     threadContext: z.number().int().optional(),
   }),
   async execute(
@@ -1583,14 +1677,25 @@ export default defineTool({
     }
 
     if (action === "cancel") {
-      const cleanup = await releaseOwnedRemoteSpy(rawRecord?.["remoteSpyOwned"] === true, threadContext, ctx);
+      const cleanup = await releaseOwnedRemoteSpy(
+        rawRecord?.["remoteSpyOwned"] === true,
+        threadContext,
+        ctx,
+      );
       return {
         data: { ...(rawRecord ?? { raw }), remoteSpyCleanup: cleanup },
-        summary: "Teach-mode recording cancelled; retained events were discarded and owned listeners were disconnected.",
+        summary:
+          "Teach-mode recording cancelled; retained events were discarded and owned listeners were disconnected.",
       };
     }
 
-    const withRemote = await addRemoteTimeline(raw, remoteLimit, sinceRemoteTime, threadContext, ctx);
+    const withRemote = await addRemoteTimeline(
+      raw,
+      remoteLimit,
+      sinceRemoteTime,
+      threadContext,
+      ctx,
+    );
     if (action === "poll") {
       return {
         data: withRemote,
@@ -1599,7 +1704,11 @@ export default defineTool({
       };
     }
 
-    const cleanup = await releaseOwnedRemoteSpy(withRemote["remoteSpyOwned"] === true, threadContext, ctx);
+    const cleanup = await releaseOwnedRemoteSpy(
+      withRemote["remoteSpyOwned"] === true,
+      threadContext,
+      ctx,
+    );
     const playbook = generatePlaybook(withRemote);
     return {
       data: { ...withRemote, playbook, remoteSpyCleanup: cleanup },

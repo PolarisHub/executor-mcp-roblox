@@ -1,7 +1,4 @@
-import type {
-  ActivityLog,
-  IntelligenceActivity,
-} from "../../application/ports/activity-log.js";
+import type { ActivityLog, IntelligenceActivity } from "../../application/ports/activity-log.js";
 import type { ClientAdmin } from "../../application/ports/client-admin.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { AppConfig } from "../../application/ports/config.js";

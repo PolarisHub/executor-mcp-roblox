@@ -4,9 +4,10 @@
 > `defineTool` contract (a handful of legacy tools were merged into cleaner
 > equivalents — e.g. `get-data-by-code` → `run-luau`, `get-descendants-tree` →
 > `get-instance-tree` — and `list-tools` is now a built-in of the MCP adapter).
-> The toolkit now ships **225 tools across 21 categories**: full functional parity
+> The toolkit now ships **252 tools across 22 categories**: full functional parity
 > plus new **Volt power tools** (Filesystem, Crypt, Drawing, RakNet packets,
-> WebSocket, HTTP, Fast Flags, `filtergc`, `gethui`, cache, and debug-stack tools).
+> WebSocket, HTTP, Fast Flags, `filtergc`, `gethui`, cache, debug-stack tools, and
+> the grounded Intelligence layer).
 > The wave history below is retained as a record of how the migration was carried out.
 
 This document is the working plan to migrate the upstream toolkit (the **176 tools** preserved under `_legacy/src/tools/impl/**`) onto the rewrite's `defineTool` contract. It is honest about scope: **wave 0 ships ~10 exemplar tools** that exercise every part of the new contract; the remaining tools land in subsequent waves, category by category.

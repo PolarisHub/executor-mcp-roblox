@@ -22,6 +22,7 @@ import { drawingTools } from "./drawing/index.js";
 import { voltExtrasTools } from "./volt-extras/index.js";
 import { networkTools } from "./network/index.js";
 import { utilityTools } from "./utility/index.js";
+import { intelligenceTools } from "./intelligence/index.js";
 
 /**
  * The single, ordered list of every built-in tool, one array per category. The
@@ -53,5 +54,6 @@ export function allTools(): Tool[] {
     ...voltExtrasTools,
     ...networkTools,
     ...utilityTools,
+    ...intelligenceTools,
   ];
 }

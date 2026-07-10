@@ -204,20 +204,21 @@ export class McpAdapter {
             sessionId: config.session.id,
             sessionLabel: config.session.label,
           });
-          const responseData = result.isError
-            ? attachRecovery(
-                result.data,
-                classifyFailure(
-                  {
-                    toolName: tool.name,
-                    error: result.summary,
-                    result: result.data,
-                    attemptedInput: args,
-                  },
-                  recoveryCatalog(registry),
-                ),
-              )
-            : result.data;
+          const responseData =
+            result.isError && asStructuredContent(result.data)?.["recovery"] === undefined
+              ? attachRecovery(
+                  result.data,
+                  classifyFailure(
+                    {
+                      toolName: tool.name,
+                      error: result.summary,
+                      result: result.data,
+                      attemptedInput: args,
+                    },
+                    recoveryCatalog(registry),
+                  ),
+                )
+              : result.data;
           return {
             content: [
               ...(result.summary

@@ -663,8 +663,8 @@ export function renderDashboardPage(): string {
   .intel-row .identity .tool {
     color: var(--text); font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .intel-row .identity .status { margin-top: 3px; padding: 0; border: 0; background: none; color: var(--faint); font-size: 10px; }
-  .intel-row.error .identity .status { color: var(--err); }
+  .intel-row .identity .intel-status { margin-top: 3px; color: var(--faint); font-size: 10px; }
+  .intel-row.error .identity .intel-status { color: var(--err); }
   .intel-detail { min-width: 0; }
   .intel-detail .target, .intel-detail .summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .intel-detail .target { color: var(--dim); font: 11px var(--mono); }
@@ -1138,6 +1138,183 @@ return p"></textarea>
     btn.classList.add("confirm");
     killArmed = btn;
     killTimer = setTimeout(disarmKill, 3000);
+  }
+
+  // ---- intelligence ----
+  // The activity buffer is already bounded at 200 records. The intelligence
+  // view renders only the newest 24 signals and an eight-step sequence.
+  var INTELLIGENCE_HISTORY_LIMIT = 24;
+  var INTELLIGENCE_SEQUENCE_LIMIT = 8;
+  var intelligenceRenderKey = "";
+  var INTELLIGENCE_PHASE_LABELS = {
+    observe: "Observed",
+    resolve: "Resolved",
+    act: "Acted",
+    verify: "Verified",
+    recover: "Recovered",
+    rollback: "Rolled back",
+    teach: "Teaching",
+    watch: "Watching",
+  };
+  function intelText(value, fallback) {
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  }
+  function intelligenceRecords() {
+    var records = [];
+    for (var i = 0; i < liveActivity.length; i++) {
+      var record = liveActivity[i];
+      var info = record && record.intelligence;
+      if (!info || typeof info !== "object" || typeof info.phase !== "string") continue;
+      records.push(record);
+    }
+    records.sort(function (a, b) { return b.at - a.at; });
+    return records;
+  }
+  function intelPhaseLabel(phase) {
+    if (INTELLIGENCE_PHASE_LABELS[phase]) return INTELLIGENCE_PHASE_LABELS[phase];
+    return intelText(phase, "Signal").replace(/(^|[-_ ])([a-z])/g, function (_, lead, c) {
+      return lead + c.toUpperCase();
+    });
+  }
+  function intelPhaseClass(phase) {
+    return INTELLIGENCE_PHASE_LABELS[phase] ? "phase-" + phase : "phase-other";
+  }
+  function intelStatus(record) {
+    var info = record.intelligence || {};
+    if (typeof info.status === "string" && info.status.trim()) return info.status.trim();
+    if (record.outcome === "error") return intelText(record.errorCode, "error");
+    return intelPhaseLabel(info.phase);
+  }
+  function intelTone(record) {
+    var status = intelStatus(record).toLowerCase();
+    if (record.outcome === "error" || /error|fail|blocked|cancel/.test(status)) return "error";
+    if (record.intelligence.phase === "rollback" || /rolling back|rollback pending/.test(status)) return "warn";
+    if (/ok|success|complete|verified|resolved|committed|recovered|ready|watching|recording/.test(status)) return "ok";
+    return "";
+  }
+  function intelTarget(record) {
+    return intelText(record.intelligence.target, intelText(record.clientName, "Live game"));
+  }
+  function intelConfidence(value) {
+    if (typeof value !== "number" || !isFinite(value)) return null;
+    var pct = value >= 0 && value <= 1 ? value * 100 : value;
+    pct = Math.max(0, Math.min(100, pct));
+    return Math.round(pct) + "% confidence";
+  }
+  function intelEvidence(value) {
+    if (typeof value !== "number" || !isFinite(value) || value < 0) return null;
+    var count = Math.floor(value);
+    return count + " evidence";
+  }
+  function intelMetrics(record) {
+    var parts = [];
+    var confidence = intelConfidence(record.intelligence.confidence);
+    var evidence = intelEvidence(record.intelligence.evidenceCount);
+    if (confidence) parts.push(confidence);
+    if (evidence) parts.push(evidence);
+    return parts.join(" / ");
+  }
+  function latestIntel(records, predicate) {
+    for (var i = 0; i < records.length; i++) {
+      if (predicate(records[i])) return records[i];
+    }
+    return null;
+  }
+  function intelStateCard(label, record, emptyValue, valueOverride) {
+    if (!record) {
+      return '<div class="intel-state"><span class="k">' + esc(label) + '</span><strong>' +
+        esc(emptyValue) + '</strong><span class="when">No recent signal</span></div>';
+    }
+    var value = valueOverride || intelStatus(record);
+    return '<div class="intel-state ' + intelTone(record) + '"><span class="k">' + esc(label) +
+      '</span><strong title="' + esc(value) + '">' + esc(value) + '</strong><span class="when" data-at="' +
+      record.at + '">' + relTime(record.at) + '</span></div>';
+  }
+  function refreshIntelligenceBadge(records) {
+    var badge = byId("t-intelligence");
+    if (badge) badge.textContent = (records || intelligenceRecords()).length;
+  }
+  function renderIntelligence(preloadedRecords) {
+    var el = byId("panel-intelligence");
+    if (!el) return;
+    var records = preloadedRecords || intelligenceRecords();
+    refreshIntelligenceBadge(records);
+    var key = records.length
+      ? records[0].at + ":" + records[0].toolName + ":" + records.length
+      : "empty";
+    if (key === intelligenceRenderKey && el.innerHTML) return;
+    intelligenceRenderKey = key;
+    if (!records.length) {
+      el.innerHTML = '<div class="intel-shell" role="region" aria-label="Intelligence timeline">' +
+        '<div class="intel-history"><div class="intel-empty"><div class="h">Intelligence standing by</div>' +
+        '<div class="s">Calls such as observe-world, smart-task, assert-state, explain-failure, ' +
+        'state-transaction, teach-mode, and world-delta will appear here automatically.</div></div></div></div>';
+      return;
+    }
+
+    var latest = records[0];
+    var latestInfo = latest.intelligence;
+    var latestLabel = intelPhaseLabel(latestInfo.phase);
+    var latestTarget = intelTarget(latest);
+    var latestStatus = intelStatus(latest);
+    var latestMetrics = intelMetrics(latest);
+    var latestSummary = intelText(latestInfo.summary, latestLabel + " through " + latest.toolName + ".");
+    var rollback = latestIntel(records, function (record) {
+      var status = intelStatus(record).toLowerCase();
+      return record.intelligence.phase === "rollback" || record.toolName === "state-transaction" || status.indexOf("rollback") !== -1;
+    });
+    var teaching = latestIntel(records, function (record) {
+      return record.intelligence.phase === "teach" || record.toolName === "teach-mode";
+    });
+    var latestError = latestIntel(records, function (record) { return record.outcome === "error"; });
+    var errorCount = 0;
+    for (var errorIndex = 0; errorIndex < records.length; errorIndex++) {
+      if (records[errorIndex].outcome === "error") errorCount++;
+    }
+
+    var sequence = records.slice(0, INTELLIGENCE_SEQUENCE_LIMIT).reverse();
+    var sequenceHtml = [];
+    for (var sequenceIndex = 0; sequenceIndex < sequence.length; sequenceIndex++) {
+      var step = sequence[sequenceIndex];
+      var stepInfo = step.intelligence;
+      if (sequenceIndex) sequenceHtml.push('<span class="intel-arrow" aria-hidden="true">&rsaquo;</span>');
+      sequenceHtml.push('<div class="intel-step ' + (step.outcome === "error" ? "error" : "") +
+        '" title="' + esc(intelText(stepInfo.summary, intelStatus(step))) + '"><div class="phase">' +
+        esc(intelPhaseLabel(stepInfo.phase)) + '</div><div class="tool">' + esc(step.toolName) +
+        '</div><div class="target">' + esc(intelTarget(step)) + '</div></div>');
+    }
+
+    var history = records.slice(0, INTELLIGENCE_HISTORY_LIMIT);
+    var historyHtml = history.map(function (record) {
+      var info = record.intelligence;
+      var summary = intelText(info.summary, intelPhaseLabel(info.phase) + " through " + record.toolName + ".");
+      var metrics = intelMetrics(record) || "No metrics";
+      return '<div class="intel-row ' + (record.outcome === "error" ? "error" : "") + '">' +
+        '<span class="when" data-at="' + record.at + '">' + relTime(record.at) + '</span>' +
+        '<div class="identity"><div class="tool">' + esc(record.toolName) + '</div><div class="intel-status">' +
+        esc(intelPhaseLabel(info.phase)) + ' / ' + esc(intelStatus(record)) + '</div></div>' +
+        '<div class="intel-detail"><div class="target" title="' + esc(intelTarget(record)) + '">' +
+        esc(intelTarget(record)) + '</div><div class="summary" title="' + esc(summary) + '">' + esc(summary) +
+        '</div></div><div class="intel-metrics">' + esc(metrics) + '</div></div>';
+    }).join("");
+
+    var errorValue = errorCount ? errorCount + " recent" : "Clear";
+    el.innerHTML = '<div class="intel-shell" role="region" aria-label="Intelligence timeline">' +
+      '<div class="intel-overview"><div class="intel-current" role="status" aria-live="polite" aria-atomic="true">' +
+      '<span class="intel-kicker"><i></i>Intelligence / live</span><div class="intel-current-head">' +
+      '<span class="intel-phase ' + intelPhaseClass(latestInfo.phase) + '"><i></i>' + esc(latestLabel) +
+      '</span><span class="intel-target" title="' + esc(latestTarget) + '">' + esc(latestTarget) + '</span></div>' +
+      '<div class="intel-meta"><span class="chip">Intelligence</span> <span class="mono">' + esc(latest.toolName) +
+      '</span> / ' + esc(latestStatus) + (latestMetrics ? " / " + esc(latestMetrics) : "") + '</div>' +
+      '<div class="intel-summary">' + esc(latestSummary) + '</div></div><div class="intel-states">' +
+      intelStateCard("Rollback", rollback, "Ready") + intelStateCard("Teaching", teaching, "Idle") +
+      intelStateCard("Errors", latestError, "Clear", errorValue) + '</div></div>' +
+      '<div class="intel-sequence"><div class="intel-section-head"><span class="label">Recent sequence</span>' +
+      '<span class="hint">Oldest to newest / ' + sequence.length + ' steps</span></div><div class="intel-flow">' +
+      sequenceHtml.join("") + '</div></div><div class="intel-history"><div class="intel-section-head">' +
+      '<span class="label">Signals</span><span class="hint">' + history.length + ' shown / ' +
+      INTELLIGENCE_HISTORY_LIMIT + ' max</span></div><div class="intel-history-body">' + historyHtml +
+      '</div></div></div>';
   }
 
   // ---- activity ----
@@ -1675,6 +1852,9 @@ return p"></textarea>
     renderHeader();
     renderClients();
     renderActivity();
+    var intelRecords = intelligenceRecords();
+    refreshIntelligenceBadge(intelRecords);
+    if (activeTab === "intelligence") renderIntelligence(intelRecords);
     renderCats();
     renderTools();
     if (activeTab === "explorer") {
@@ -2094,7 +2274,7 @@ return p"></textarea>
   }
   function renderPbForm(pb, isNew) {
     var paramRows = (pb.params || []).map(function (p) {
-      return '<div class="pname">${' + esc(p) + '}</div>' +
+      return '<div class="pname">${" + esc(p) + "}</div>' +
         '<input class="search" data-param="' + esc(p) + '" placeholder="value" />';
     }).join("");
     var runRes = "";
@@ -2729,6 +2909,9 @@ return p"></textarea>
           byId("s-errs").textContent = liveActivityErrors;
           byId("t-activity").textContent = liveActivityTotal;
           renderLiveScene();
+          var intelRecords = intelligenceRecords();
+          refreshIntelligenceBadge(intelRecords);
+          if (activeTab === "intelligence") renderIntelligence(intelRecords);
           if (activeTab === "activity") renderActivity();
         }
         nudgeState();
