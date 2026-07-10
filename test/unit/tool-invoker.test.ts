@@ -7,6 +7,7 @@ import { SessionManager } from "../../src/application/services/session-manager.j
 import { ToolInvoker } from "../../src/application/services/tool-invoker.js";
 import type { ToolInvokerDeps } from "../../src/application/services/tool-invoker.js";
 import type { AppConfig } from "../../src/application/ports/config.js";
+import type { ActivityRecord } from "../../src/application/ports/activity-log.js";
 import type {
   EvalRequest,
   ExecutionGateway,
@@ -326,6 +327,102 @@ describe("ToolInvoker", () => {
     const duration = observed.find((m) => m.name === "tool.duration_ms");
     expect(duration?.value).toBe(250);
     expect(duration?.tags).toMatchObject({ tool: "tick", outcome: "ok" });
+  });
+
+  it("records compact intelligence result evidence for the live dashboard", async () => {
+    const records: ActivityRecord[] = [];
+    const { deps, registry } = buildDeps({
+      activity: {
+        record: (record) => void records.push(record),
+        recent: () => records,
+        summary: () => ({ total: records.length, errors: 0 }),
+        perToolStats: () => [],
+      },
+    });
+    registry.register(
+      defineTool({
+        name: "smart-task",
+        description: "Runs an adaptive task.",
+        category: "Intelligence",
+        input: z.object({}),
+        requiresClient: false,
+        async execute() {
+          return {
+            data: {
+              status: "completed",
+              goal: "open the shop",
+              completionConfidence: 0.8,
+              timeline: [{ phase: "observe" }, { phase: "verify" }],
+            },
+            summary: "Shop opening was verified.",
+          };
+        },
+      }),
+    );
+
+    await new ToolInvoker(deps).invoke({
+      toolName: "smart-task",
+      input: {},
+      sessionId: SID,
+      sessionLabel: LABEL,
+    });
+
+    expect(records[0]).toMatchObject({
+      outcome: "ok",
+      intelligence: {
+        phase: "act",
+        status: "completed",
+        confidence: 0.8,
+        target: "open the shop",
+        evidenceCount: 2,
+        summary: "Shop opening was verified.",
+      },
+    });
+  });
+
+  it("counts handled tool errors as failed activity instead of successful calls", async () => {
+    const records: ActivityRecord[] = [];
+    const traces: Array<{ error?: { code?: string } }> = [];
+    const { deps, registry } = buildDeps({
+      activity: {
+        record: (record) => void records.push(record),
+        recent: () => records,
+        summary: () => ({ total: records.length, errors: records.length }),
+        perToolStats: () => [],
+      },
+      sessionLogger: {
+        append: (record) => void traces.push(record),
+        list: async () => [],
+        read: async () => [],
+      },
+    });
+    registry.register(
+      defineTool({
+        name: "explain-failure",
+        description: "Returns a handled failure.",
+        category: "Intelligence",
+        input: z.object({}),
+        requiresClient: false,
+        async execute() {
+          return { data: { status: "failed", error: "unresolved" }, isError: true };
+        },
+      }),
+    );
+
+    const result = await new ToolInvoker(deps).invoke({
+      toolName: "explain-failure",
+      input: {},
+      sessionId: SID,
+      sessionLabel: LABEL,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(records[0]).toMatchObject({
+      outcome: "error",
+      errorCode: "TOOL_ERROR",
+      intelligence: { phase: "recover", status: "failed" },
+    });
+    expect(traces[0]?.error?.code).toBe("TOOL_ERROR");
   });
 
   it("aborts the context signal once a tool completes", async () => {

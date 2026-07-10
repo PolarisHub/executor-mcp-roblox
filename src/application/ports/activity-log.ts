@@ -2,6 +2,26 @@ import type { RobloxClient } from "../../domain/client/client.js";
 import type { ToolCategory } from "../../domain/tool/category.js";
 import type { ClientId, SessionId } from "../../domain/shared/ids.js";
 
+export type IntelligencePhase =
+  | "observe"
+  | "resolve"
+  | "act"
+  | "verify"
+  | "recover"
+  | "rollback"
+  | "teach"
+  | "watch";
+
+/** Compact result digest used by the dashboard's intelligence timeline. */
+export interface IntelligenceActivity {
+  readonly phase: IntelligencePhase;
+  readonly status?: string;
+  readonly confidence?: number;
+  readonly target?: string;
+  readonly evidenceCount?: number;
+  readonly summary?: string;
+}
+
 /** One recorded tool invocation, for the live activity feed. */
 export interface ActivityRecord {
   readonly toolName: string;
@@ -12,6 +32,7 @@ export interface ActivityRecord {
   readonly outcome: "ok" | "error";
   readonly durationMs: number;
   readonly errorCode?: string;
+  readonly intelligence?: IntelligenceActivity;
   /** Epoch millis. */
   readonly at: number;
 }

@@ -55,6 +55,9 @@ export function inferToolContract(tool: ContractInput): ToolContract {
       ? ["run test-capabilities and use an alternative if unavailable"]
       : []),
     ...(verifiesWith.length > 0 ? [`run ${verifiesWith[0]} after success`] : []),
+    ...(tool.mutatesState && verifiesWith.length === 0
+      ? ["use assert-state with an explicit goal predicate after the mutation"]
+      : []),
   ];
   return {
     phase,

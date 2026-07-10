@@ -101,12 +101,13 @@ export function renderDashboardPage(): string {
   /* ---- tabs ---- */
   nav.tabs {
     display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--bg); overflow-x: auto; scrollbar-width: thin;
   }
   nav.tabs button {
     appearance: none; background: none; border: none; cursor: pointer;
     color: var(--dim); font: inherit; font-size: 13px;
     padding: 11px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    flex: 0 0 auto;
   }
   nav.tabs button:hover { color: var(--text); }
   nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
@@ -573,6 +574,106 @@ export function renderDashboardPage(): string {
     color: var(--accent); border-color: rgba(107,155,255,0.4); background: rgba(107,155,255,0.07);
   }
 
+  /* ---- intelligence timeline ---- */
+  .intel-shell { display: grid; gap: 12px; }
+  .intel-overview, .intel-sequence, .intel-history {
+    border: 1px solid var(--border); border-radius: 8px; background: rgba(27,27,27,.94);
+  }
+  .intel-overview {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    gap: 18px; padding: 15px 16px;
+  }
+  .intel-kicker {
+    display: inline-flex; align-items: center; gap: 7px; color: var(--accent);
+    font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  }
+  .intel-kicker i, .intel-phase i {
+    width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none;
+  }
+  .intel-current { min-width: 0; }
+  .intel-current-head { display: flex; align-items: center; gap: 9px; margin-top: 7px; min-width: 0; }
+  .intel-phase {
+    display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600;
+    white-space: nowrap;
+  }
+  .intel-phase.phase-observe, .intel-phase.phase-watch { color: #8db2ff; }
+  .intel-phase.phase-resolve { color: #9bcae8; }
+  .intel-phase.phase-act { color: #cab0f5; }
+  .intel-phase.phase-verify { color: var(--ok); }
+  .intel-phase.phase-recover { color: #e4bd72; }
+  .intel-phase.phase-rollback { color: var(--warn); }
+  .intel-phase.phase-teach { color: #8ed8c6; }
+  .intel-target {
+    color: var(--text); font: 13px var(--mono); overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .intel-meta, .intel-summary { color: var(--faint); font-size: 12px; line-height: 1.45; }
+  .intel-meta { margin-top: 5px; }
+  .intel-summary { margin-top: 6px; color: var(--dim); }
+  .intel-states { display: flex; align-items: stretch; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
+  .intel-state {
+    min-width: 112px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: rgba(32,32,32,.72);
+  }
+  .intel-state .k {
+    display: block; color: var(--faint); font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
+  }
+  .intel-state strong {
+    display: block; margin-top: 4px; color: var(--dim); font: 11px var(--mono); font-weight: 500;
+    max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .intel-state.ok strong { color: var(--ok); }
+  .intel-state.warn strong { color: var(--warn); }
+  .intel-state.error strong { color: var(--err); }
+  .intel-state .when { display: block; margin-top: 3px; color: var(--faint); font-size: 10px; }
+  .intel-section-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 12px; border-bottom: 1px solid var(--border);
+  }
+  .intel-section-head .label {
+    color: var(--faint); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  .intel-section-head .hint { color: var(--faint); font-size: 11px; }
+  .intel-flow {
+    display: flex; align-items: stretch; gap: 7px; overflow-x: auto; padding: 11px 12px;
+    scrollbar-width: thin;
+  }
+  .intel-step {
+    flex: 0 0 132px; min-width: 0; padding: 8px 9px; border: 1px solid #252525;
+    border-radius: 6px; background: rgba(31,31,31,.72);
+  }
+  .intel-step.error { border-color: rgba(226,92,84,.35); background: rgba(226,92,84,.055); }
+  .intel-step .phase { color: var(--dim); font-size: 11px; font-weight: 600; }
+  .intel-step.error .phase { color: var(--err); }
+  .intel-step .tool, .intel-step .target {
+    margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .intel-step .tool { color: var(--text); font: 10px var(--mono); }
+  .intel-step .target { color: var(--faint); font-size: 10px; }
+  .intel-arrow { align-self: center; color: #4d4d4d; font-size: 15px; flex: none; }
+  .intel-history-body { max-height: 520px; overflow-y: auto; }
+  .intel-row {
+    display: grid; grid-template-columns: 82px minmax(150px, .8fr) minmax(220px, 1.5fr) auto;
+    align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid #1f1f1f;
+  }
+  .intel-row:last-child { border-bottom: 0; }
+  .intel-row.error { background: rgba(226,92,84,.035); }
+  .intel-row .when { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .intel-row .identity { min-width: 0; }
+  .intel-row .identity .tool {
+    color: var(--text); font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .intel-row .identity .status { margin-top: 3px; padding: 0; border: 0; background: none; color: var(--faint); font-size: 10px; }
+  .intel-row.error .identity .status { color: var(--err); }
+  .intel-detail { min-width: 0; }
+  .intel-detail .target, .intel-detail .summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .intel-detail .target { color: var(--dim); font: 11px var(--mono); }
+  .intel-detail .summary { margin-top: 3px; color: var(--faint); font-size: 11px; }
+  .intel-metrics { color: var(--faint); font: 10px var(--mono); text-align: right; white-space: nowrap; }
+  .intel-empty { padding: 42px 18px; text-align: center; }
+  .intel-empty .h { color: var(--dim); }
+  .intel-empty .s { max-width: 560px; margin: 6px auto 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
+
   /* Subtle ambient live background: independent particles only, no guide lines or trails. */
   .live-scene {
     position: fixed; inset: 0; z-index: 0; height: 100vh; overflow: hidden; isolation: isolate;
@@ -606,6 +707,12 @@ export function renderDashboardPage(): string {
     .tools-layout { grid-template-columns: 1fr; }
     .exp-layout { grid-template-columns: 1fr; }
     .strip { overflow-x: auto; }
+    .intel-overview { grid-template-columns: 1fr; align-items: start; }
+    .intel-states { justify-content: flex-start; }
+    .intel-state { flex: 1 1 100px; }
+    .intel-row { grid-template-columns: 64px minmax(0, 1fr); gap: 7px 10px; }
+    .intel-row .intel-detail, .intel-row .intel-metrics { grid-column: 2; }
+    .intel-row .intel-metrics { text-align: left; }
     .live-scene { height: 100vh; }
     .scene-hud { grid-template-columns: 1fr; gap: 8px; padding: 14px 16px; }
     .scene-nodes { justify-content: flex-start; }
@@ -681,6 +788,7 @@ export function renderDashboardPage(): string {
   <button data-tab="clients" class="active">Clients<span class="count" id="t-clients">0</span></button>
   <button data-tab="tools">Tools<span class="count" id="t-tools">0</span></button>
   <button data-tab="activity">Activity<span class="count" id="t-activity">0</span></button>
+  <button data-tab="intelligence">Intelligence<span class="count" id="t-intelligence">0</span></button>
   <button data-tab="explorer">Explorer</button>
   <button data-tab="brief">Brief</button>
   <button data-tab="spy">Spy<span class="count" id="t-spy">0</span></button>
@@ -704,6 +812,8 @@ export function renderDashboardPage(): string {
   </section>
 
   <section class="panel" id="panel-activity"></section>
+
+  <section class="panel" id="panel-intelligence"></section>
 
   <section class="panel" id="panel-explorer"></section>
 
@@ -858,6 +968,7 @@ return p"></textarea>
     for (var i = 0; i < btns.length; i++) btns[i].classList.toggle("active", btns[i].getAttribute("data-tab") === tab);
     var panels = document.querySelectorAll(".panel");
     for (var j = 0; j < panels.length; j++) panels[j].classList.toggle("active", panels[j].id === "panel-" + tab);
+    if (tab === "intelligence") renderIntelligence();
     if (tab === "explorer") renderExplorer();
     if (tab === "output") renderOutput();
     if (tab === "brief") renderBrief();

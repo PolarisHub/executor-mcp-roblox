@@ -5,6 +5,8 @@ import { DomainError, toDomainError } from "../../domain/errors/errors.js";
 import type { ActivityLog } from "../../application/ports/activity-log.js";
 import type { AppConfig } from "../../application/ports/config.js";
 import type { Logger } from "../../application/ports/logger.js";
+import type { ToolDescriptor } from "../../application/ports/tool-directory.js";
+import { classifyFailure } from "../../application/services/recovery-intelligence.js";
 import type { ToolInvoker } from "../../application/services/tool-invoker.js";
 import type { Tool } from "../../application/tool/tool.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
@@ -37,6 +39,24 @@ function safeStringify(value: unknown): string {
 function asStructuredContent(value: unknown): Record<string, unknown> | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
   return value as Record<string, unknown>;
+}
+
+function recoveryCatalog(registry: ToolRegistry): ToolDescriptor[] {
+  return registry.list().map((tool) => ({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    category: tool.category,
+    mutatesState: tool.mutatesState === true,
+    requiresClient: tool.requiresClient !== false,
+    ai: tool.ai,
+    input: tool.input,
+  }));
+}
+
+function attachRecovery(data: unknown, recovery: unknown): Record<string, unknown> {
+  const structured = asStructuredContent(data);
+  return structured ? { ...structured, recovery } : { result: data, recovery };
 }
 
 export interface McpAdapterDeps {
@@ -131,10 +151,14 @@ export class McpAdapter {
         `selection, game identity, executor capabilities, and concrete next actions in one read-only brief. Do not ` +
         `assume the active place, JobId, executor, or capability set from an earlier task.`,
       "Character fallback rule: if get-local-player-info reports characterRecovery, treat that as a live notification that the standard Character/Humanoid/HumanoidRootPart path is unavailable or custom. Do not retry the same path. Call discover-character, search-instances, or script to search the actual game, then pass the returned model, Humanoid, and root-part paths into later tools. The recovery payload includes a bounded custom Luau script you can run or adapt.",
-      `For closed-loop execution, use \`agent-run\` with explicit ordered steps. Start with \`dryRun:true\`; keep ` +
-        `\`allowMutations:false\` until the target is confirmed. Pass earlier outputs forward with ` +
-        `\`$steps.stepId.data.field\`, and let contract verifiers prove mutations. Store verified place-specific facts ` +
-        `with \`agent-memory\`; never store secrets, tokens, or credentials.`,
+      "World Brain rule: for interaction tasks or uncertain paths, call observe-world first. Prefer its semantic entity handles and exact evidence over guessed instance paths or screen coordinates; use resolve-entity immediately before acting when state may have changed. Use world-delta for bounded event-driven changes instead of repeated full scans.",
+      `For closed-loop execution, prefer \`smart-task\`: plan or preview first, set hard budgets, allow mutations only ` +
+        `after the target is confirmed, and attach explicit \`assert-state\` success predicates. A tool returning without ` +
+        `an error is not proof that the goal succeeded. Use \`explain-failure\` for structured recovery and never blindly ` +
+        `repeat an identical failed mutation. \`agent-run\` remains available for simpler fixed workflows and ` +
+        `\`$steps.stepId.data.field\` references.`,
+      "Before reversible experiments, begin a state-transaction and commit only after assertions pass; otherwise rollback. Use teach-mode when the user can demonstrate a workflow once, then review its generated semantic playbook and uncertainty flags before replaying it.",
+      `Store verified place-specific facts with \`agent-memory\`; never store secrets, tokens, or credentials.`,
       `Beyond \`script\`, there are dedicated tools for signals & connections, metatables & closures, ` +
         `cross-references (xrefs), reverse-engineering & disassembly, memory scanning, remote spying, GUI, ` +
         `drawing, crypto, filesystem, networking/packets, and instrumentation. Before assuming something is ` +
@@ -148,7 +172,7 @@ export class McpAdapter {
   }
 
   private registerTool(server: McpServer, tool: Tool): void {
-    const { invoker, config } = this.deps;
+    const { invoker, config, registry } = this.deps;
     const contract = tool.ai;
     const contractHint = contract
       ? ` AI contract: phase=${contract.phase}; ` +
@@ -180,22 +204,51 @@ export class McpAdapter {
             sessionId: config.session.id,
             sessionLabel: config.session.label,
           });
+          const responseData = result.isError
+            ? attachRecovery(
+                result.data,
+                classifyFailure(
+                  {
+                    toolName: tool.name,
+                    error: result.summary,
+                    result: result.data,
+                    attemptedInput: args,
+                  },
+                  recoveryCatalog(registry),
+                ),
+              )
+            : result.data;
           return {
             content: [
               ...(result.summary
                 ? [{ type: "text" as const, text: `Summary: ${result.summary}` }]
                 : []),
-              { type: "text" as const, text: safeStringify(result.data) },
+              { type: "text" as const, text: safeStringify(responseData) },
             ],
-            ...(asStructuredContent(result.data)
-              ? { structuredContent: asStructuredContent(result.data) }
+            ...(asStructuredContent(responseData)
+              ? { structuredContent: asStructuredContent(responseData) }
               : {}),
             isError: result.isError ?? false,
           };
         } catch (thrown) {
           const error = thrown instanceof DomainError ? thrown : toDomainError(thrown);
+          const recovery = classifyFailure(
+            {
+              toolName: tool.name,
+              error: error.toJSON(),
+              attemptedInput: args,
+            },
+            recoveryCatalog(registry),
+          );
           return {
-            content: [{ type: "text" as const, text: formatDomainError(error) }],
+            content: [
+              { type: "text" as const, text: formatDomainError(error) },
+              {
+                type: "text" as const,
+                text: `Structured recovery: ${safeStringify(recovery)}`,
+              },
+            ],
+            structuredContent: { error: error.toJSON(), recovery },
             isError: true,
           };
         }

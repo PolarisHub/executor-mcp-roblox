@@ -132,7 +132,10 @@ export default defineTool({
       }
       await Promise.all(pending);
       recommendations.push(
-        "Use tool-plan with the user's goal, then follow a discover→act→verify workflow.",
+        "For uncertain game state, call observe-world and resolve semantic targets before acting.",
+      );
+      recommendations.push(
+        "Use smart-task in plan or preview mode, then execute with explicit assertions and mutation approval.",
       );
       recommendations.push(
         "Use tool-schema on any selected tool whose required fields are not already obvious.",

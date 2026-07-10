@@ -17,7 +17,7 @@ export interface RankedTool<T extends DiscoveryTool = DiscoveryTool> {
 export interface WorkflowStep {
   readonly tool: string;
   readonly why: string;
-  readonly phase: "discover" | "act" | "verify";
+  readonly phase: "discover" | "act" | "verify" | "recover";
 }
 
 export interface WorkflowMatch {
@@ -71,6 +71,10 @@ const ALIAS_GROUPS: readonly string[][] = [
   ["memory", "gc", "garbage", "closure", "upvalue", "constant"],
   ["performance", "fps", "latency", "lag", "render", "diagnostic", "health"],
   ["set", "change", "write", "edit", "modify", "update", "create", "destroy"],
+  ["observe", "perceive", "scan", "world", "scene", "nearby", "visible"],
+  ["verify", "assert", "prove", "confirm", "validate"],
+  ["recover", "fallback", "repair", "failure", "error"],
+  ["teach", "record", "demonstrate", "learn", "playbook", "macro"],
 ];
 
 const ALIAS_INDEX = new Map<string, readonly string[]>();
@@ -179,6 +183,11 @@ const WORKFLOWS: readonly (WorkflowMatch & { readonly patterns: readonly RegExp[
     ],
     steps: [
       {
+        tool: "observe-world",
+        phase: "discover",
+        why: "Build one compact world, character, camera, GUI, and interactable snapshot.",
+      },
+      {
         tool: "search-instances",
         phase: "discover",
         why: "Find likely instances by class/name/property.",
@@ -205,6 +214,11 @@ const WORKFLOWS: readonly (WorkflowMatch & { readonly patterns: readonly RegExp[
     ],
     steps: [
       {
+        tool: "observe-world",
+        phase: "discover",
+        why: "Ground the task in visible GUI, nearby 3D targets, and the current custom character.",
+      },
+      {
         tool: "list-gui-elements",
         phase: "discover",
         why: "Enumerate visible GUI targets and paths.",
@@ -225,9 +239,61 @@ const WORKFLOWS: readonly (WorkflowMatch & { readonly patterns: readonly RegExp[
         why: "Read or move the local camera when the task involves view or aim.",
       },
       {
-        tool: "get-gui-text",
+        tool: "assert-state",
         phase: "verify",
-        why: "Check text or UI state after the interaction.",
+        why: "Prove the intended game or UI state changed after the interaction.",
+      },
+    ],
+  },
+  {
+    id: "adaptive-goal",
+    title: "Run a bounded, self-correcting game task",
+    description:
+      "Observe current state, execute an approved adaptive plan, prove the outcome, and classify failures instead of retrying blindly.",
+    patterns: [
+      /\b(goal|task|workflow|autopilot|automatic|adapt|replan|recover|verify|assert|prove)\b/i,
+    ],
+    steps: [
+      {
+        tool: "observe-world",
+        phase: "discover",
+        why: "Create grounded semantic targets and a compact state baseline.",
+      },
+      {
+        tool: "smart-task",
+        phase: "act",
+        why: "Execute explicit steps under call, time, mutation, and loop budgets.",
+      },
+      {
+        tool: "assert-state",
+        phase: "verify",
+        why: "Evaluate actual success predicates rather than tool-return status.",
+      },
+      {
+        tool: "explain-failure",
+        phase: "recover",
+        why: "Classify failed evidence and select a non-repeating fallback.",
+      },
+    ],
+  },
+  {
+    id: "teach-workflow",
+    title: "Learn a reusable workflow from a demonstration",
+    description:
+      "Record bounded input and game events, then generate a conservative semantic playbook for review.",
+    patterns: [
+      /\b(teach|record|demonstrate|demonstration|learn|macro|repeat what i do|playback)\b/i,
+    ],
+    steps: [
+      {
+        tool: "teach-mode",
+        phase: "discover",
+        why: "Capture the demonstration and infer guarded semantic actions.",
+      },
+      {
+        tool: "assert-state",
+        phase: "verify",
+        why: "Attach explicit success checks before replaying the learned playbook.",
       },
     ],
   },

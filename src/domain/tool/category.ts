@@ -22,6 +22,7 @@ export const TOOL_CATEGORIES = [
   "Drawing",
   "Network",
   "Utility",
+  "Intelligence",
   "Semantic Search",
   "Windows",
 ] as const;

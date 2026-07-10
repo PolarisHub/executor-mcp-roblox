@@ -58,6 +58,7 @@ describe("isToolCategory", () => {
   it("accepts known categories and rejects unknown ones", () => {
     expect(isToolCategory("Diagnostics")).toBe(true);
     expect(isToolCategory("Memory Scan")).toBe(true);
+    expect(isToolCategory("Intelligence")).toBe(true);
     expect(isToolCategory("Nonsense")).toBe(false);
   });
 });

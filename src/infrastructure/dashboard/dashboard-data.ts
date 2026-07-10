@@ -1,4 +1,7 @@
-import type { ActivityLog } from "../../application/ports/activity-log.js";
+import type {
+  ActivityLog,
+  IntelligenceActivity,
+} from "../../application/ports/activity-log.js";
 import type { ClientAdmin } from "../../application/ports/client-admin.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
 import type { AppConfig } from "../../application/ports/config.js";
@@ -54,10 +57,12 @@ export interface DashboardState {
     readonly recent: readonly {
       readonly toolName: string;
       readonly category: string;
+      readonly sessionId: string;
       readonly outcome: "ok" | "error";
       readonly durationMs: number;
       readonly errorCode?: string;
       readonly clientName?: string | null;
+      readonly intelligence?: IntelligenceActivity;
       readonly at: number;
     }[];
   };
@@ -106,11 +111,13 @@ export function buildDashboardState(deps: DashboardDeps): DashboardState {
       recent: deps.activity.recent(40).map((r) => ({
         toolName: r.toolName,
         category: r.category,
+        sessionId: r.sessionId,
         outcome: r.outcome,
         durationMs: r.durationMs,
         clientName: r.clientName ?? null,
         at: r.at,
         ...(r.errorCode ? { errorCode: r.errorCode } : {}),
+        ...(r.intelligence ? { intelligence: { ...r.intelligence } } : {}),
       })),
     },
   };
