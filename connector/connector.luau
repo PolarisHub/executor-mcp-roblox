@@ -198,9 +198,11 @@ local function buildHandshake(clientId)
 
 	local placeId = nil
 	local jobId = nil
+	local gameName = nil
 	pcall(function()
 		placeId = game.PlaceId
 		jobId = game.JobId
+		gameName = game.Name
 	end)
 
 	return {
@@ -208,6 +210,7 @@ local function buildHandshake(clientId)
 		userId = userId,
 		username = username,
 		displayName = displayName,
+		gameName = gameName,
 		placeId = placeId,
 		jobId = jobId,
 		executor = detectExecutor(),

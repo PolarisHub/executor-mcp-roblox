@@ -443,6 +443,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       userId: handshake.userId === null ? null : UserId(handshake.userId),
       username: handshake.username,
       displayName: handshake.displayName,
+      gameName: handshake.gameName ?? null,
       placeId: handshake.placeId,
       jobId: handshake.jobId,
       executor: handshake.executor,

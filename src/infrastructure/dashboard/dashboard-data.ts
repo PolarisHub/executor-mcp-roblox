@@ -36,6 +36,7 @@ export interface DashboardState {
     readonly clientId: string;
     readonly username: string | null;
     readonly displayName: string | null;
+    readonly gameName: string | null;
     readonly userId: number | null;
     readonly placeId: number | null;
     readonly jobId: string | null;
@@ -87,6 +88,7 @@ export function buildDashboardState(deps: DashboardDeps): DashboardState {
       clientId: c.id,
       username: c.username,
       displayName: c.displayName,
+      gameName: c.gameName ?? null,
       userId: c.userId,
       placeId: c.placeId,
       jobId: c.jobId,

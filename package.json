@@ -10,7 +10,7 @@
   },
   "main": "dist/interface/main.js",
   "bin": {
-    "executor-mcp-roblox": "dist/interface/main.js"
+    "executor-mcp-roblox": "dist/interface/launcher.js"
   },
   "files": [
     "dist",
@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "node --eval \"import('node:fs').then(fs => fs.rmSync('dist', { recursive: true, force: true }))\"",
     "dev": "tsx watch src/interface/main.ts",
-    "start": "node dist/interface/main.js",
+    "start": "node dist/interface/launcher.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -26,6 +26,7 @@ const handshakeSchema = z.object({
   userId: z.number().nullable(),
   username: z.string().nullable(),
   displayName: z.string().nullable(),
+  gameName: z.string().nullable().optional(),
   placeId: z.number().nullable(),
   jobId: z.string().nullable(),
   executor: z.string().nullable(),

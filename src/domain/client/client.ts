@@ -11,6 +11,8 @@ export interface RobloxClient {
   readonly userId: UserId | null;
   readonly username: string | null;
   readonly displayName: string | null;
+  /** Live Roblox DataModel name advertised by the connector, when available. */
+  readonly gameName?: string | null;
   readonly placeId: number | null;
   readonly jobId: string | null;
   readonly executor: string | null;

@@ -113,7 +113,9 @@ pnpm build
 pnpm start        # or pnpm dev for watch mode
 ```
 
-The server speaks MCP over stdin/stdout. Point your client (Claude, Cursor, Windsurf, anything that speaks MCP) at `node /path/to/executor-mcp-roblox/dist/interface/main.js`. Logs go to stderr; stdout is the protocol channel.
+The server speaks MCP over stdin/stdout. Point your client (Claude, Cursor, Windsurf, anything that speaks MCP) at `node /path/to/executor-mcp-roblox/dist/interface/launcher.js`. The launcher starts the owner automatically, reuses an already-running owner, and proxies later MCP stdio sessions to it so multiple host windows do not collide on the bridge port. It also coordinates simultaneous starts with a user-owned lock, removes stale locks, buffers early MCP messages, and can take over after an owner exits. Logs go to stderr; stdout is the protocol channel.
+
+Launcher tuning is optional. `ROBLOX_MCP_LAUNCHER_DEBUG=1` enables startup/proxy diagnostics; `ROBLOX_MCP_RUNTIME_DIR` changes the lock directory; and the `ROBLOX_MCP_LAUNCHER_*` timeout/retry variables can tune slow machines without changing the MCP command.
 
 ### Connecting the game
 
@@ -141,6 +143,10 @@ Read once at startup, validated, then passed read-only. No `process.env` access 
 |                   | `ROBLOX_MCP_BRIDGE_TOKEN`      | unset       | When set, the bridge AND dashboard require this token. Connector reads `getgenv().BridgeToken`.       |
 |                   | `ROBLOX_MCP_LOG_LEVEL`         | `info`      | `trace` through `fatal`.                                                                              |
 |                   | `ROBLOX_MCP_LOG_PRETTY`        | off         | `1` for human-readable logs.                                                                          |
+|                   | `ROBLOX_MCP_RUNTIME_DIR`       | `~/.executor-mcp` | Directory for per-port launcher locks.                                                            |
+|                   | `ROBLOX_MCP_LAUNCHER_DEBUG`    | off         | `1` to log owner discovery, lock, startup, and proxy transitions.                                    |
+|                   | `ROBLOX_MCP_LAUNCHER_READY_TIMEOUT_MS` | `15000` | Maximum time to wait for a newly spawned owner to expose health + MCP.                          |
+|                   | `ROBLOX_MCP_LAUNCHER_MAX_START_ATTEMPTS` | `4` | Startup retries after a bind/process race.                                                     |
 |                   | `ROBLOX_MCP_SCRIPT_DIRS`       | —           | Extra folders `execute-file` may read.                                                                |
 |                   | `ROBLOX_MCP_EMBEDDINGS_URL`    | local       | Embeddings endpoint for semantic search (Ollama / OpenAI-compatible).                                 |
 |                   | `ROBLOX_MCP_EMBEDDINGS_MODEL`  | `embeddinggemma` | Model name passed to the embeddings endpoint.                                                    |

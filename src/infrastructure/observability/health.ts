@@ -3,6 +3,7 @@ import type { ClientDirectory } from "../../application/ports/client-directory.j
 
 /** The payload returned by the `/health` endpoint. */
 export interface HealthReport {
+  readonly service: "executor-mcp-roblox";
   readonly status: "ok";
   readonly uptimeMs: number;
   readonly startedAt: number;
@@ -36,6 +37,7 @@ export class HealthReporter {
 
   report(): HealthReport {
     return {
+      service: "executor-mcp-roblox",
       status: "ok",
       uptimeMs: this.clock.now() - this.startedAt,
       startedAt: this.startedAt,

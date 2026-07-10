@@ -17,6 +17,8 @@ export interface ClientHandshake {
   readonly userId: number | null;
   readonly username: string | null;
   readonly displayName: string | null;
+  /** Optional for compatibility with older connectors. */
+  readonly gameName?: string | null;
   readonly placeId: number | null;
   readonly jobId: string | null;
   readonly executor: string | null;

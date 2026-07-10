@@ -37,8 +37,10 @@ export function renderDashboardPage(): string {
     font-size: 13px;
     color: var(--text);
     background: var(--bg);
+    position: relative;
     -webkit-font-smoothing: antialiased;
   }
+  body > header, body > .strip, body > nav.tabs, body > main { position: relative; z-index: 1; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: #2f2f2f; border-radius: 6px; border: 2px solid var(--bg); }
   ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
@@ -571,10 +573,44 @@ export function renderDashboardPage(): string {
     color: var(--accent); border-color: rgba(107,155,255,0.4); background: rgba(107,155,255,0.07);
   }
 
+  /* Subtle ambient live background: independent particles only, no guide lines or trails. */
+  .live-scene {
+    position: fixed; inset: 0; z-index: 0; height: 100vh; overflow: hidden; isolation: isolate;
+    border: 0; opacity: .34; pointer-events: none; background:
+      radial-gradient(circle at 18% 24%, rgba(190,190,190,.055), transparent 28%),
+      radial-gradient(circle at 78% 72%, rgba(155,155,155,.045), transparent 32%),
+      linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
+    contain: layout paint style;
+  }
+  .scene-particles { position: absolute; inset: 0; overflow: hidden; filter: grayscale(1); }
+  .scene-particle { position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size); border-radius: var(--radius, 50%); background: rgba(220,220,220,.28); box-shadow: 0 0 var(--blur) rgba(210,210,210,.18); opacity: var(--alpha, .45); animation: scene-particle-drift var(--duration) ease-in-out var(--delay) infinite alternate; will-change: transform, opacity; }
+  .scene-particle.label { width: auto; height: auto; color: rgba(205,205,205,.25); background: none; box-shadow: none; font: var(--label-size, 9px) var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  .scene-particle.square { border-radius: 2px; }
+  .scene-hud { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 18px 28px; opacity: .13; pointer-events: none; filter: grayscale(1); }
+  .scene-identity { min-width: 0; align-self: start; margin-top: 5px; }
+  .scene-kicker { color: var(--accent-2, #57e6c9); font: 9px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+  .scene-game { margin-top: 7px; color: #eef5ff; font-size: 18px; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 0 16px rgba(107,155,255,.35); }
+  .scene-sub { margin-top: 5px; color: rgba(183,199,225,.7); font: 10px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scene-nodes { display: flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; }
+  .scene-node { min-width: 106px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
+  .scene-node.module { border-color: transparent; }
+  .scene-node .node-k { color: rgba(183,199,225,.62); font: 9px var(--mono); letter-spacing: .12em; }
+  .scene-node strong { display: block; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; color: #e7f0ff; font: 11px var(--mono); }
+  .scene-live { align-self: end; justify-self: end; display: inline-flex; align-items: center; gap: 6px; color: rgba(87,230,201,.82); font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  .scene-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: scene-live-blink 1.8s ease-in-out infinite; }
+  @keyframes scene-particle-drift { 0% { transform: translate3d(0, 0, 0) scale(.8); } 50% { transform: translate3d(var(--dx), var(--dy), 0) scale(1); } 100% { transform: translate3d(var(--dx2), var(--dy2), 0) scale(.86); } }
+  @keyframes scene-live-blink { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .scene-particle, .scene-live i { animation: none; } }
+
   @media (max-width: 720px) {
     .tools-layout { grid-template-columns: 1fr; }
     .exp-layout { grid-template-columns: 1fr; }
     .strip { overflow-x: auto; }
+    .live-scene { height: 100vh; }
+    .scene-hud { grid-template-columns: 1fr; gap: 8px; padding: 14px 16px; }
+    .scene-nodes { justify-content: flex-start; }
+    .scene-node { min-width: 94px; padding: 6px 8px; }
+    .scene-live { display: none; }
   }
 </style>
 </head>
@@ -604,6 +640,42 @@ export function renderDashboardPage(): string {
   <div class="cell"><div class="k">Tool calls</div><div class="v num" id="s-calls">–</div></div>
   <div class="cell"><div class="k">Errors</div><div class="v num" id="s-errs">–</div></div>
 </div>
+
+<section class="live-scene" aria-label="Live game data flow">
+  <div class="scene-particles" aria-hidden="true">
+    <i class="scene-particle" style="--x:4%;--y:14%;--size:3px;--blur:10px;--duration:8s;--delay:-2s;--dx:18px;--dy:-12px;--dx2:-10px;--dy2:15px"></i>
+    <i class="scene-particle square" style="--x:11%;--y:42%;--size:2px;--blur:8px;--duration:11s;--delay:-7s;--dx:-14px;--dy:18px;--dx2:20px;--dy2:-8px"></i>
+    <i class="scene-particle" style="--x:18%;--y:78%;--size:4px;--blur:14px;--duration:13s;--delay:-4s;--dx:12px;--dy:12px;--dx2:-18px;--dy2:-16px"></i>
+    <i class="scene-particle label" style="--x:24%;--y:17%;--duration:17s;--delay:-11s;--dx:-10px;--dy:9px;--dx2:14px;--dy2:-12px">module</i>
+    <i class="scene-particle" style="--x:31%;--y:61%;--size:2px;--blur:7px;--duration:9s;--delay:-1s;--dx:16px;--dy:-17px;--dx2:-8px;--dy2:10px"></i>
+    <i class="scene-particle square" style="--x:38%;--y:29%;--size:3px;--blur:11px;--duration:14s;--delay:-8s;--dx:-20px;--dy:-10px;--dx2:9px;--dy2:18px"></i>
+    <i class="scene-particle label" style="--x:43%;--y:84%;--duration:12s;--delay:-5s;--dx:12px;--dy:-10px;--dx2:-12px;--dy2:8px">function</i>
+    <i class="scene-particle" style="--x:49%;--y:12%;--size:2px;--blur:9px;--duration:10s;--delay:-3s;--dx:-9px;--dy:15px;--dx2:17px;--dy2:-14px"></i>
+    <i class="scene-particle" style="--x:56%;--y:48%;--size:4px;--blur:15px;--duration:16s;--delay:-13s;--dx:20px;--dy:11px;--dx2:-15px;--dy2:-18px"></i>
+    <i class="scene-particle square" style="--x:62%;--y:73%;--size:2px;--blur:8px;--duration:9s;--delay:-6s;--dx:-13px;--dy:-15px;--dx2:16px;--dy2:12px"></i>
+    <i class="scene-particle label" style="--x:67%;--y:23%;--duration:15s;--delay:-9s;--dx:11px;--dy:14px;--dx2:-19px;--dy2:-9px">remote</i>
+    <i class="scene-particle" style="--x:73%;--y:56%;--size:3px;--blur:12px;--duration:12s;--delay:-2s;--dx:-17px;--dy:10px;--dx2:12px;--dy2:-16px"></i>
+    <i class="scene-particle square" style="--x:81%;--y:11%;--size:2px;--blur:7px;--duration:18s;--delay:-12s;--dx:14px;--dy:-13px;--dx2:-10px;--dy2:18px"></i>
+    <i class="scene-particle" style="--x:88%;--y:38%;--size:4px;--blur:13px;--duration:11s;--delay:-4s;--dx:-12px;--dy:-17px;--dx2:19px;--dy2:9px"></i>
+    <i class="scene-particle label" style="--x:91%;--y:82%;--duration:14s;--delay:-10s;--dx:-16px;--dy:8px;--dx2:10px;--dy2:-14px">signal</i>
+    <i class="scene-particle" style="--x:7%;--y:91%;--size:2px;--blur:9px;--duration:15s;--delay:-1s;--dx:10px;--dy:-16px;--dx2:-18px;--dy2:11px"></i>
+    <i class="scene-particle" style="--x:27%;--y:47%;--size:3px;--blur:10px;--duration:10s;--delay:-7s;--dx:-11px;--dy:13px;--dx2:18px;--dy2:-7px"></i>
+    <i class="scene-particle square" style="--x:46%;--y:66%;--size:2px;--blur:8px;--duration:13s;--delay:-3s;--dx:19px;--dy:-11px;--dx2:-14px;--dy2:16px"></i>
+    <i class="scene-particle" style="--x:78%;--y:91%;--size:3px;--blur:12px;--duration:9s;--delay:-8s;--dx:-15px;--dy:-9px;--dx2:11px;--dy2:17px"></i>
+  </div>
+  <div class="scene-hud">
+    <div class="scene-identity">
+      <div class="scene-kicker">LIVE GAME LINK</div>
+      <div class="scene-game" id="scene-game">Waiting for a connected game</div>
+      <div class="scene-sub" id="scene-place">No Roblox client connected</div>
+    </div>
+    <div class="scene-nodes">
+      <div class="scene-node module"><div class="node-k">MODULE</div><strong id="scene-module">Waiting</strong></div>
+      <div class="scene-node"><div class="node-k">FUNCTION</div><strong id="scene-function">Listening</strong></div>
+    </div>
+    <div class="scene-live"><i></i><span id="scene-live-text">STREAM STANDBY</span></div>
+  </div>
+</section>
 
 <nav class="tabs" id="tabs">
   <button data-tab="clients" class="active">Clients<span class="count" id="t-clients">0</span></button>
@@ -820,6 +892,31 @@ return p"></textarea>
     byId("s-errs").textContent = state.activity.errors;
     byId("t-clients").textContent = state.clients.length;
     byId("t-activity").textContent = state.activity.total;
+    renderLiveScene();
+  }
+  var sceneKey = "";
+  function renderLiveScene() {
+    var client = state && state.clients && state.clients[0];
+    var game = client
+      ? (client.gameName || (client.placeId ? "Place " + client.placeId : "Connected game"))
+      : "Waiting for a connected game";
+    var place = client
+      ? "Place " + (client.placeId || "?") + "  ·  " + (client.executor || "executor")
+      : "No Roblox client connected";
+    var moduleLabel = "Live module surface";
+    if (briefState && briefState.summary && briefState.clientId === (client && client.clientId)) {
+      var replicated = briefState.summary.counts && briefState.summary.counts.replicated;
+      if (replicated && typeof replicated.ModuleScript === "number") moduleLabel = replicated.ModuleScript + " ModuleScripts";
+    }
+    var functionLabel = liveActivity.length && liveActivity[0].toolName ? liveActivity[0].toolName : "mcp listener";
+    var key = [game, place, moduleLabel, functionLabel, state ? state.clients.length : 0].join("|");
+    if (key === sceneKey) return;
+    sceneKey = key;
+    byId("scene-game").textContent = game;
+    byId("scene-place").textContent = place;
+    byId("scene-module").textContent = moduleLabel;
+    byId("scene-function").textContent = functionLabel;
+    byId("scene-live-text").textContent = client ? "STREAMING / " + state.clients.length + " CLIENT" + (state.clients.length === 1 ? "" : "S") : "STREAM STANDBY";
   }
   // local uptime ticker
   var uptimeBase = 0, uptimeAt = 0;
@@ -2364,6 +2461,7 @@ return p"></textarea>
         if (briefState.clientId !== clientId) return;
         if (data && data.error) briefState.summaryErr = data.error;
         else briefState.summary = data;
+        renderLiveScene();
         if (activeTab === "brief") renderBrief();
       })
       .catch(function () {
@@ -2519,6 +2617,7 @@ return p"></textarea>
           byId("s-calls").textContent = liveActivityTotal;
           byId("s-errs").textContent = liveActivityErrors;
           byId("t-activity").textContent = liveActivityTotal;
+          renderLiveScene();
           if (activeTab === "activity") renderActivity();
         }
         nudgeState();

@@ -20,6 +20,7 @@ import { Dashboard } from "../infrastructure/dashboard/dashboard.js";
 import { DashboardEventBus } from "../infrastructure/dashboard/dashboard-events.js";
 import { DashboardWebSocketServer } from "../infrastructure/dashboard/dashboard-ws.js";
 import { McpAdapter } from "../infrastructure/mcp/mcp-adapter.js";
+import { McpHttpEndpoint } from "../infrastructure/mcp/mcp-http-endpoint.js";
 import { HealthReporter } from "../infrastructure/observability/health.js";
 import { InMemoryActivityLog } from "../infrastructure/observability/in-memory-activity-log.js";
 import { InMemoryOutputLog } from "../infrastructure/observability/in-memory-output-log.js";
@@ -171,7 +172,7 @@ function compose(): Application {
     app.post("/api/exec-tool", async (c) => {
       let payload: { token?: unknown; tool?: unknown; args?: unknown };
       try {
-        payload = (await c.req.json());
+        payload = await c.req.json();
       } catch {
         return c.json({ ok: false, error: "invalid JSON body" }, 400);
       }
@@ -185,6 +186,10 @@ function compose(): Application {
   });
 
   const mcp = new McpAdapter({ registry, invoker, config, logger, activity });
+  const mcpHttp = new McpHttpEndpoint({ createServer: () => mcp.buildServer() });
+  bridge.addRoutes((app) => {
+    app.all("/mcp", (c) => mcpHttp.handle(c.req.raw));
+  });
 
   // Pre-create this process's session so its label shows up immediately.
   sessionStore.getOrCreate(config.session.id, config.session.label);
@@ -217,6 +222,7 @@ function compose(): Application {
       if (stopping) return;
       stopping = true;
       logger.info("shutting down");
+      await mcpHttp.close();
       await bridge.stop();
     },
   };
