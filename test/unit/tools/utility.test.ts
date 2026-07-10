@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ToolContext } from "../../../src/application/tool/tool.js";
-import type { ToolDirectory, ToolDescriptor } from "../../../src/application/ports/tool-directory.js";
+import type {
+  ToolDirectory,
+  ToolDescriptor,
+} from "../../../src/application/ports/tool-directory.js";
 import { utilityTools } from "../../../src/tools/utility/index.js";
 import getFastFlag from "../../../src/tools/utility/get-fast-flag.js";
 import setFpsCap from "../../../src/tools/utility/set-fps-cap.js";
 import messageBox from "../../../src/tools/utility/message-box.js";
 import toolSchema from "../../../src/tools/utility/tool-schema.js";
+import toolPlan from "../../../src/tools/utility/tool-plan.js";
 
 interface Captured {
   source: string;
@@ -24,10 +28,39 @@ function stubContext(canned: unknown): { ctx: ToolContext; calls: Captured[] } {
   return { ctx, calls };
 }
 
+function plannerContext(): ToolContext {
+  const tools: ToolDescriptor[] = [
+    {
+      name: "get-players",
+      title: "Get connected players",
+      description: "Returns the players currently in the game.",
+      category: "Inspection",
+      mutatesState: false,
+      requiresClient: true,
+      input: z.object({ limit: z.number().int().optional().describe("Max players to return.") }),
+    },
+    {
+      name: "set-instance-property",
+      title: "Set a property on an instance",
+      description: "Writes a property by path.",
+      category: "Actions",
+      mutatesState: true,
+      requiresClient: true,
+      input: z.object({ path: z.string(), property: z.string(), value: z.unknown() }),
+    },
+  ];
+  return {
+    tools: {
+      list: () => tools,
+      find: (name: string) => tools.find((tool) => tool.name === name) ?? null,
+    },
+  } as unknown as ToolContext;
+}
+
 describe("utility tools", () => {
-  it("exports 11 tools, all in the Utility category, with unique names", () => {
-    expect(utilityTools).toHaveLength(11);
-    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(11);
+  it("exports 12 tools, all in the Utility category, with unique names", () => {
+    expect(utilityTools).toHaveLength(12);
+    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(12);
     for (const tool of utilityTools) {
       expect(tool.category).toBe("Utility");
     }
@@ -136,8 +169,8 @@ describe("utility tools", () => {
       const result = await toolSchema.execute({ name: "set-instance-property" }, ctx);
       const data = result.data as { example: string };
       expect(data.example).toContain("mcp.setInstanceProperty(");
-      expect(data.example).toContain("path = <string>");
-      expect(data.example).toContain("property = <string>");
+      expect(data.example).toContain('path = "..."');
+      expect(data.example).toContain('property = "..."');
     });
 
     it("returns near-miss suggestions with signatures when the name is unknown", async () => {
@@ -169,6 +202,34 @@ describe("utility tools", () => {
       const result = await toolSchema.execute({ search: "property" }, ctx);
       const data = result.data as { tools: Array<{ name: string }> };
       expect(data.tools.map((t) => t.name)).toEqual(["set-instance-property"]);
+    });
+  });
+
+  describe("tool-plan", () => {
+    it("turns a natural-language goal into schema-aware ranked candidates", async () => {
+      const result = await toolPlan.execute(
+        { goal: "find the player's cash", limit: 5, includeMutating: false },
+        plannerContext(),
+      );
+      const data = result.data as {
+        goal: string;
+        alternatives: Array<{
+          name: string;
+          signature: string;
+          mutatesState: boolean;
+          why: string;
+        }>;
+        guidance: string[];
+      };
+
+      expect(data.goal).toBe("find the player's cash");
+      expect(data.alternatives[0]?.name).toBe("get-players");
+      expect(data.alternatives[0]?.signature).toContain("limit");
+      expect(data.alternatives[0]?.mutatesState).toBe(false);
+      expect(data.alternatives[0]?.why).toContain("Matched");
+      expect(data.guidance).toContain(
+        "Mutating tools were excluded; set includeMutating=true when you are ready to act.",
+      );
     });
   });
 });

@@ -38,6 +38,14 @@ function nearestNames(name: string, all: readonly string[], limit = 3): string[]
     .map((pair) => pair.candidate);
 }
 
+function exampleValue(type: string): string {
+  if (type.includes("string")) return '"..."';
+  if (type.includes("number")) return "0";
+  if (type.includes("boolean")) return "false";
+  if (type.startsWith("{")) return "{}";
+  return "nil";
+}
+
 /**
  * Returns the full input schema and a compact Luau-flavored signature for one
  * (or every) tool on this server. The point is in-script introspection: from
@@ -108,11 +116,9 @@ export default defineTool({
       const exampleArgs = fields
         .filter((f) => !f.optional)
         .slice(0, 3)
-        .map((f) => `${f.name} = <${f.type}>`)
+        .map((f) => `${f.name} = ${exampleValue(f.type)}`)
         .join(", ");
-      const example = exampleArgs
-        ? `mcp.${camel}({ ${exampleArgs} })`
-        : `mcp.${camel}()`;
+      const example = exampleArgs ? `mcp.${camel}({ ${exampleArgs} })` : `mcp.${camel}()`;
       return {
         data: {
           name: descriptor.name,
