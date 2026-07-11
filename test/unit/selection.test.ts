@@ -84,11 +84,23 @@ describe("resolveSelection", () => {
     expect(result).toEqual({ status: "none", reason: "selection-offline" });
   });
 
-  it("returns none/selection-offline when a pinned clientId is gone and no account matches", () => {
+  it("recovers a clientId-only pin whose socket reconnected under a new id", () => {
+    // A clientId-only pin has no account to protect. If the pinned connection is
+    // gone (e.g. it reconnected under a fresh id) and exactly one client is online,
+    // resolve to it instead of reporting the client offline.
     const present = makeClient({ id: ClientId("conn-here"), userId: UserId(1) });
     const selection: ClientSelection = { clientId: ClientId("conn-missing") };
     const result = resolveSelection(selection, [present]);
-    expect(result).toEqual({ status: "none", reason: "selection-offline" });
+    expect(result.status).toBe("resolved");
+    if (result.status === "resolved") expect(result.client).toBe(present);
+  });
+
+  it("is ambiguous (never cross-switches) when a clientId-only pin is gone and accounts differ", () => {
+    const a = makeClient({ id: ClientId("conn-a"), userId: UserId(1), username: "alice" });
+    const b = makeClient({ id: ClientId("conn-b"), userId: UserId(2), username: "bob" });
+    const selection: ClientSelection = { clientId: ClientId("conn-missing") };
+    const result = resolveSelection(selection, [a, b]);
+    expect(result.status).toBe("ambiguous");
   });
 
   it("picks the newest socket when the same account is on two connections", () => {

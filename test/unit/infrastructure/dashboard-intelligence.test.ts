@@ -96,7 +96,10 @@ describe("dashboard intelligence", () => {
     expect(page).toContain("refreshIntelligenceBadge(intelRecords)");
     expect(page).toContain("prefers-reduced-motion: reduce");
     expect(page).toContain(".live-scene");
-    expect(page).not.toContain("requestAnimationFrame");
+    // The live hero scene is a WebGL surface driven by the shared activity/client
+    // events; the intelligence timeline itself stays event-driven (asserted above).
+    expect(page).toContain('id="scene-canvas"');
+    expect(page).toContain("window.SceneViz");
 
     const embeddedScript = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1];
     expect(embeddedScript).toBeDefined();

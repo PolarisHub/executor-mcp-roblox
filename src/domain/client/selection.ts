@@ -47,11 +47,6 @@ export function resolveSelection(
 ): SelectionResolution {
   if (clients.length === 0) return { status: "none", reason: "no-clients" };
 
-  const hasPin =
-    selection.clientId !== undefined ||
-    selection.userId !== undefined ||
-    selection.username !== undefined;
-
   if (selection.clientId !== undefined) {
     const exact = clients.find((c) => c.id === selection.clientId);
     if (exact) return { status: "resolved", client: exact };
@@ -68,9 +63,16 @@ export function resolveSelection(
     }
   }
 
-  if (hasPin) return { status: "none", reason: "selection-offline" };
+  // A pin that carries an account identity (userId/username) must never silently
+  // switch to a different account, so report it offline when that account is gone.
+  // But a clientId-ONLY pin has no account to protect: if the socket reconnected
+  // under a new id, the exact match above missed it — fall through to the
+  // unambiguous auto-resolve below so the same lone client is picked up again.
+  const hasAccountPin = selection.userId !== undefined || selection.username !== undefined;
+  if (hasAccountPin) return { status: "none", reason: "selection-offline" };
 
-  // No selection: auto-resolve only when every connection is the same account.
+  // No selection (or clientId-only pin that reconnected): auto-resolve only when
+  // every connection is the same account.
   const distinctAccounts = clients.reduce<RobloxClient[]>((acc, client) => {
     if (!acc.some((seen) => isSameAccount(seen, client))) acc.push(client);
     return acc;

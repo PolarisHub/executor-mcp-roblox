@@ -24,6 +24,7 @@ export function renderDashboardPage(): string {
     --dim: #9a9a9a;
     --faint: #6b6b6b;
     --accent: #6b9bff;
+    --accent-2: #57e6c9;
     --ok: #5ec26e;
     --err: #e25c54;
     --warn: #d6a14a;
@@ -775,34 +776,128 @@ export function renderDashboardPage(): string {
   .intel-empty .h { color: var(--dim); }
   .intel-empty .s { max-width: 560px; margin: 6px auto 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
 
-  /* Subtle ambient live background: independent particles only, no guide lines or trails. */
+  /* ---- live 2D hero scene ---- */
   .live-scene {
-    position: fixed; inset: 0; z-index: 0; height: 100vh; overflow: hidden; isolation: isolate;
-    border: 0; opacity: .34; pointer-events: none; background:
-      radial-gradient(circle at 18% 24%, rgba(190,190,190,.055), transparent 28%),
-      radial-gradient(circle at 78% 72%, rgba(155,155,155,.045), transparent 32%),
-      linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
+    position: relative; height: 340px; overflow: hidden; isolation: isolate;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
     contain: layout paint style;
   }
-  .scene-particles { position: absolute; inset: 0; overflow: hidden; filter: grayscale(1); }
-  .scene-particle { position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size); border-radius: var(--radius, 50%); background: rgba(220,220,220,.28); box-shadow: 0 0 var(--blur) rgba(210,210,210,.18); opacity: var(--alpha, .45); animation: scene-particle-drift var(--duration) ease-in-out var(--delay) infinite alternate; will-change: transform, opacity; }
-  .scene-particle.label { width: auto; height: auto; color: rgba(205,205,205,.25); background: none; box-shadow: none; font: var(--label-size, 9px) var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  #scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+
+  /* CSS particle fallback — hidden once WebGL takes over */
+  .scene-particles { position: absolute; inset: 0; overflow: hidden; z-index: 0; }
+  .live-scene.webgl .scene-particles { display: none; }
+  .scene-particle { position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size); border-radius: var(--radius, 50%); background: rgba(140,175,235,.42); box-shadow: 0 0 var(--blur) rgba(120,160,230,.35); opacity: var(--alpha, .5); animation: scene-particle-drift var(--duration) ease-in-out var(--delay) infinite alternate; will-change: transform, opacity; }
+  .scene-particle.label { width: auto; height: auto; color: rgba(150,180,230,.4); background: none; box-shadow: none; font: var(--label-size, 9px) var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
   .scene-particle.square { border-radius: 2px; }
-  .scene-hud { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 18px 28px; opacity: .13; pointer-events: none; filter: grayscale(1); }
-  .scene-identity { min-width: 0; align-self: start; margin-top: 5px; }
-  .scene-kicker { color: var(--accent-2, #57e6c9); font: 9px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
-  .scene-game { margin-top: 7px; color: #eef5ff; font-size: 18px; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 0 16px rgba(107,155,255,.35); }
-  .scene-sub { margin-top: 5px; color: rgba(183,199,225,.7); font: 10px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scene-nodes { display: flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; }
-  .scene-node { min-width: 106px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
-  .scene-node.module { border-color: transparent; }
-  .scene-node .node-k { color: rgba(183,199,225,.62); font: 9px var(--mono); letter-spacing: .12em; }
-  .scene-node strong { display: block; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; color: #e7f0ff; font: 11px var(--mono); }
-  .scene-live { align-self: end; justify-self: end; display: inline-flex; align-items: center; gap: 6px; color: rgba(87,230,201,.82); font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
-  .scene-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: scene-live-blink 1.8s ease-in-out infinite; }
+
+  /* HUD overlay (full-opacity, sits above the canvas) */
+  .scene-hud {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: auto 1fr auto;
+    gap: 12px; padding: 22px 28px;
+  }
+  .scene-identity { grid-column: 1; grid-row: 1; min-width: 0; }
+  .scene-kicker { display: inline-flex; align-items: center; gap: 7px; color: var(--accent-2); font: 9px var(--mono); letter-spacing: .18em; text-transform: uppercase; }
+  .scene-kicker::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); animation: scene-live-blink 1.8s ease-in-out infinite; }
+  .scene-game { margin-top: 9px; color: #f0f6ff; font-size: 23px; font-weight: 650; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 0 24px rgba(107,155,255,.45); }
+  .scene-sub { margin-top: 6px; color: rgba(190,205,232,.72); font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scene-legend { grid-column: 1; grid-row: 3; align-self: end; display: flex; gap: 15px; color: var(--faint); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .scene-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .scene-legend i { width: 6px; height: 6px; border-radius: 2px; }
+  .scene-legend i.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .scene-legend i.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .scene-legend i.link { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .scene-live { grid-column: 2; grid-row: 3; justify-self: end; align-self: end; display: inline-flex; align-items: center; gap: 7px; color: rgba(87,230,201,.9); font: 9px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .scene-live i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; animation: scene-live-blink 1.6s ease-in-out infinite; }
+
+  /* hover tooltip — the player behind a blue dot, and what it is doing */
+  .scene-tip {
+    position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none;
+    min-width: 190px; max-width: 260px; padding: 11px 12px; border-radius: 12px;
+    opacity: 0; transform: translateY(5px) scale(.97); transform-origin: top left;
+    transition: opacity .14s ease, transform .14s ease;
+    background: linear-gradient(180deg, rgba(23,29,42,.94), rgba(14,18,27,.96));
+    border: 1px solid rgba(120,150,210,.3);
+    box-shadow: 0 20px 48px -22px rgba(0,0,0,.92), inset 0 1px 0 rgba(255,255,255,.06);
+    backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
+  }
+  .scene-tip.show { opacity: 1; transform: translateY(0) scale(1); }
+  .tip-head { display: flex; align-items: center; gap: 11px; }
+  .tip-av {
+    width: 36px; height: 36px; border-radius: 9px; overflow: hidden; flex: none;
+    display: inline-grid; place-items: center; background: #1f2740;
+    border: 1px solid rgba(120,150,210,.32); color: #cdd7ea; font: 600 14px var(--font);
+  }
+  .tip-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tip-name { color: #eef4ff; font-size: 13.5px; font-weight: 650; letter-spacing: -.01em; }
+  .tip-user { color: var(--dim); font: 11px var(--mono); margin-top: 2px; }
+  .tip-meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .tip-meta .k {
+    font: 10px var(--mono); color: rgba(190,205,232,.78); padding: 2px 7px; border-radius: 5px;
+    background: rgba(120,150,210,.1); border: 1px solid rgba(120,150,210,.18); white-space: nowrap;
+  }
+  .tip-act {
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(120,150,210,.15);
+    color: var(--accent-2); font: 11px var(--mono); display: flex; align-items: center; gap: 7px;
+  }
+  .tip-act.err { color: var(--err); }
+  .tip-act .adot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; flex: none; }
+
   @keyframes scene-particle-drift { 0% { transform: translate3d(0, 0, 0) scale(.8); } 50% { transform: translate3d(var(--dx), var(--dy), 0) scale(1); } 100% { transform: translate3d(var(--dx2), var(--dy2), 0) scale(.86); } }
   @keyframes scene-live-blink { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .scene-particle, .scene-live i { animation: none; } }
+
+  /* ---- global motion / micro-interactions ---- */
+  .livebar { position: relative; height: 2px; background: transparent; overflow: hidden; }
+  .livebar::after { content: ""; position: absolute; top: 0; left: -35%; width: 35%; height: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), rgba(87,230,201,.9), transparent);
+    animation: livebar-move 2.6s cubic-bezier(.5,0,.5,1) infinite; }
+  @keyframes livebar-move { 0% { left: -35%; } 100% { left: 100%; } }
+
+  .strip .cell { position: relative; transition: background .3s ease; }
+  .strip .cell .v { transition: color .3s ease, text-shadow .3s ease; }
+  .strip .cell.flash .v { color: var(--accent); text-shadow: 0 0 16px rgba(107,155,255,.55); }
+  .strip .cell.flash { background: rgba(107,155,255,.05); }
+
+  .mark { animation: mark-float 6s ease-in-out infinite; }
+  .mark svg { filter: drop-shadow(0 0 5px rgba(107,155,255,.55)); }
+  @keyframes mark-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+
+  .status i { position: relative; }
+  .status:not(.off) i::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid currentColor; opacity: .55; animation: status-ping 1.9s ease-out infinite; }
+  @keyframes status-ping { 0% { transform: scale(.5); opacity: .6; } 100% { transform: scale(2.1); opacity: 0; } }
+
+  nav.tabs button { position: relative; overflow: hidden; transition: color .18s ease, background .18s ease; }
+  nav.tabs button:hover { background: rgba(255,255,255,.02); }
+  nav.tabs button .count { display: inline-block; transition: transform .2s ease, color .2s ease; }
+  nav.tabs button .count.bump { animation: count-bump .45s cubic-bezier(.2,.8,.2,1); }
+  @keyframes count-bump { 0% { transform: scale(1); } 35% { transform: scale(1.55); color: var(--accent); } 100% { transform: scale(1); } }
+
+  .panel.active { animation: panel-in .34s cubic-bezier(.2,.7,.2,1); }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+
+  tbody tr.clickable { transition: background .15s ease, box-shadow .15s ease; }
+  tbody tr.clickable:hover { box-shadow: inset 3px 0 0 var(--accent); }
+  .avatar { transition: transform .18s ease, box-shadow .18s ease; }
+  tr.clickable:hover .avatar { transform: scale(1.06); box-shadow: 0 0 0 1px var(--accent), 0 4px 14px -6px rgba(107,155,255,.6); }
+
+  .out-btn { transition: transform .12s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease; }
+  .out-btn:hover { transform: translateY(-1px); }
+  .out-btn:active { transform: translateY(0) scale(.98); }
+  .out-btn, .cats button { position: relative; overflow: hidden; }
+  .chip, .badge { transition: transform .12s ease, border-color .15s ease, color .15s ease; }
+  tbody tr:hover .chip { border-color: var(--border-2); }
+
+  .ripple { position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none;
+    background: radial-gradient(circle, rgba(140,175,235,.35), rgba(140,175,235,0) 70%);
+    animation: ripple-out .6s ease-out forwards; }
+  @keyframes ripple-out { to { transform: scale(2.6); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scene-particle, .scene-live i, .scene-kicker::before, .mark, .status i::after,
+    .livebar::after, .panel.active, .count.bump { animation: none; }
+  }
 
   @media (max-width: 1100px) {
     .script-grid { grid-template-columns: minmax(0, 1fr) 270px; }
@@ -823,11 +918,11 @@ export function renderDashboardPage(): string {
     .intel-row { grid-template-columns: 64px minmax(0, 1fr); gap: 7px 10px; }
     .intel-row .intel-detail, .intel-row .intel-metrics { grid-column: 2; }
     .intel-row .intel-metrics { text-align: left; }
-    .live-scene { height: 100vh; }
-    .scene-hud { grid-template-columns: 1fr; gap: 8px; padding: 14px 16px; }
-    .scene-nodes { justify-content: flex-start; }
-    .scene-node { min-width: 94px; padding: 6px 8px; }
-    .scene-live { display: none; }
+    .live-scene { height: 250px; }
+    .scene-hud { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; gap: 8px; padding: 14px 16px; }
+    .scene-game { font-size: 19px; }
+    .scene-legend { display: none; }
+    .scene-live { grid-column: 1; justify-self: start; }
   }
 </style>
 </head>
@@ -858,7 +953,10 @@ export function renderDashboardPage(): string {
   <div class="cell"><div class="k">Errors</div><div class="v num" id="s-errs">–</div></div>
 </div>
 
-<section class="live-scene" aria-label="Live game data flow">
+<div class="livebar"></div>
+
+<section class="live-scene" id="live-scene" aria-label="Live game data flow">
+  <canvas id="scene-canvas"></canvas>
   <div class="scene-particles" aria-hidden="true">
     <i class="scene-particle" style="--x:4%;--y:14%;--size:3px;--blur:10px;--duration:8s;--delay:-2s;--dx:18px;--dy:-12px;--dx2:-10px;--dy2:15px"></i>
     <i class="scene-particle square" style="--x:11%;--y:42%;--size:2px;--blur:8px;--duration:11s;--delay:-7s;--dx:-14px;--dy:18px;--dx2:20px;--dy2:-8px"></i>
@@ -881,16 +979,22 @@ export function renderDashboardPage(): string {
     <i class="scene-particle" style="--x:78%;--y:91%;--size:3px;--blur:12px;--duration:9s;--delay:-8s;--dx:-15px;--dy:-9px;--dx2:11px;--dy2:17px"></i>
   </div>
   <div class="scene-hud">
-    <div class="scene-identity">
-      <div class="scene-kicker">LIVE GAME LINK</div>
-      <div class="scene-game" id="scene-game">Waiting for a connected game</div>
-      <div class="scene-sub" id="scene-place">No Roblox client connected</div>
-    </div>
-    <div class="scene-nodes">
-      <div class="scene-node module"><div class="node-k">MODULE</div><strong id="scene-module">Waiting</strong></div>
-      <div class="scene-node"><div class="node-k">FUNCTION</div><strong id="scene-function">Listening</strong></div>
+    <div class="scene-legend">
+      <span><i class="link"></i>activity</span>
+      <span><i class="err"></i>error</span>
     </div>
     <div class="scene-live"><i></i><span id="scene-live-text">STREAM STANDBY</span></div>
+  </div>
+  <div class="scene-tip" id="scene-tip" aria-hidden="true">
+    <div class="tip-head">
+      <span class="tip-av" id="tip-av">?</span>
+      <div class="tip-id">
+        <div class="tip-name" id="tip-name">—</div>
+        <div class="tip-user" id="tip-user"></div>
+      </div>
+    </div>
+    <div class="tip-meta" id="tip-meta"></div>
+    <div class="tip-act" id="tip-act"></div>
   </div>
 </section>
 
@@ -996,6 +1100,41 @@ return p"></textarea>
 (function () {
   "use strict";
   var byId = function (id) { return document.getElementById(id); };
+  // Count-up tween for the stat strip: eases from the old value to the new one
+  // and flashes the cell so live changes read as motion, not a silent swap.
+  function animNum(el, to) {
+    if (!el) return;
+    to = Number(to);
+    if (!isFinite(to)) return;
+    var from = Number(el.getAttribute("data-v"));
+    if (!isFinite(from)) from = to;
+    el.setAttribute("data-v", to);
+    if (from === to) { el.textContent = to; return; }
+    var cell = el.closest ? el.closest(".cell") : null;
+    if (cell) { cell.classList.add("flash"); setTimeout(function () { cell.classList.remove("flash"); }, 650); }
+    var t0 = 0;
+    var run = function (t) {
+      if (!t0) t0 = t;
+      var k = Math.min(1, (t - t0) / 480);
+      var e = 1 - Math.pow(1 - k, 3);
+      el.textContent = Math.round(from + (to - from) * e);
+      if (k < 1) requestAnimationFrame(run);
+    };
+    requestAnimationFrame(run);
+  }
+  function bumpEl(el) {
+    if (!el) return;
+    el.classList.remove("bump");
+    void el.offsetWidth;
+    el.classList.add("bump");
+    setTimeout(function () { el.classList.remove("bump"); }, 480);
+  }
+  function scenePulse(kind) {
+    if (window.SceneViz && window.SceneViz.ready) window.SceneViz.pulse(kind);
+  }
+  function sceneActivity(rec) {
+    if (window.SceneViz && window.SceneViz.ready && window.SceneViz.markActivity) window.SceneViz.markActivity(rec);
+  }
   function esc(v) {
     if (v === null || v === undefined) return "";
     return String(v).replace(/[&<>"']/g, function (m) {
@@ -1087,6 +1226,7 @@ return p"></textarea>
     if (tab === "spy") renderSpy();
     if (tab === "playbooks") renderPlaybooks();
     if (tab === "repl") renderRepl();
+    scenePulse("info");
   }
   tabsEl.addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -1108,38 +1248,26 @@ return p"></textarea>
     byId("m-label").textContent = state.server.label;
     byId("m-version").textContent = "v" + state.server.version;
     byId("m-addr").textContent = state.server.host + ":" + state.server.port;
-    byId("s-tools").textContent = state.catalog.total;
-    byId("s-cats").textContent = state.catalog.categories.length;
-    byId("s-conn").textContent = state.clients.length;
-    byId("s-calls").textContent = state.activity.total;
-    byId("s-errs").textContent = state.activity.errors;
+    animNum(byId("s-tools"), state.catalog.total);
+    animNum(byId("s-cats"), state.catalog.categories.length);
+    animNum(byId("s-conn"), state.clients.length);
+    animNum(byId("s-calls"), state.activity.total);
+    animNum(byId("s-errs"), state.activity.errors);
     byId("t-clients").textContent = state.clients.length;
     byId("t-activity").textContent = state.activity.total;
     renderLiveScene();
   }
   var sceneKey = "";
   function renderLiveScene() {
-    var client = state && state.clients && state.clients[0];
-    var game = client
-      ? (client.gameName || (client.placeId ? "Place " + client.placeId : "Connected game"))
-      : "Waiting for a connected game";
-    var place = client
-      ? "Place " + (client.placeId || "?") + "  ·  " + (client.executor || "executor")
-      : "No Roblox client connected";
-    var moduleLabel = "Live module surface";
-    if (briefState && briefState.summary && briefState.clientId === (client && client.clientId)) {
-      var replicated = briefState.summary.counts && briefState.summary.counts.replicated;
-      if (replicated && typeof replicated.ModuleScript === "number") moduleLabel = replicated.ModuleScript + " ModuleScripts";
+    if (window.SceneViz && window.SceneViz.ready) {
+      window.SceneViz.syncClients(state && state.clients ? state.clients : []);
+      window.SceneViz.seed(state && state.activity ? state.activity.recent : []);
     }
-    var functionLabel = liveActivity.length && liveActivity[0].toolName ? liveActivity[0].toolName : "mcp listener";
-    var key = [game, place, moduleLabel, functionLabel, state ? state.clients.length : 0].join("|");
+    var count = state ? state.clients.length : 0;
+    var key = String(count);
     if (key === sceneKey) return;
     sceneKey = key;
-    byId("scene-game").textContent = game;
-    byId("scene-place").textContent = place;
-    byId("scene-module").textContent = moduleLabel;
-    byId("scene-function").textContent = functionLabel;
-    byId("scene-live-text").textContent = client ? "STREAMING / " + state.clients.length + " CLIENT" + (state.clients.length === 1 ? "" : "S") : "STREAM STANDBY";
+    byId("scene-live-text").textContent = count ? "STREAMING / " + count + " GAME" + (count === 1 ? "" : "S") : "STREAM STANDBY";
   }
   // local uptime ticker
   var uptimeBase = 0, uptimeAt = 0;
@@ -3413,9 +3541,11 @@ return p"></textarea>
           ingestActivityRecord(msg.record, true);
           liveActivityTotal += 1;
           if (msg.record.outcome === "error") liveActivityErrors += 1;
-          byId("s-calls").textContent = liveActivityTotal;
-          byId("s-errs").textContent = liveActivityErrors;
+          animNum(byId("s-calls"), liveActivityTotal);
+          animNum(byId("s-errs"), liveActivityErrors);
           byId("t-activity").textContent = liveActivityTotal;
+          bumpEl(byId("t-activity"));
+          sceneActivity(msg.record);
           renderLiveScene();
           var intelRecords = intelligenceRecords();
           refreshIntelligenceBadge(intelRecords);
@@ -3425,6 +3555,7 @@ return p"></textarea>
         nudgeState();
       } else if (msg.type === "client-change") {
         nudgeState();
+        scenePulse("info");
       }
     };
     ws.onclose = function () {
@@ -3443,6 +3574,479 @@ return p"></textarea>
   setInterval(pollState, 2000);
   setInterval(loadTools, 30000);
   setInterval(pollOutput, 1500);
+})();
+</script>
+
+<script>
+/* Live 2D hero: a data-flow schematic. AI agents (left) send requests through the
+   MCP bridge (centre) to connected games (right) along orthogonal traces; a bright
+   comet streams the data, coloured per client / per agent. A gradient "response"
+   arc loops over the top, carrying results back to the agents. Canvas 2D, no lib.
+   No template literals / backticks / dollar-brace, matching the page contract. */
+(function () {
+  "use strict";
+  var canvas = document.getElementById("scene-canvas");
+  var host = document.getElementById("live-scene");
+  var tip = document.getElementById("scene-tip");
+  var noop = function () {};
+  if (!canvas || !host || !canvas.getContext) {
+    window.SceneViz = { syncClients: noop, markActivity: noop, seed: noop, pulse: noop, ready: false };
+    return;
+  }
+  var ctx = canvas.getContext("2d");
+  if (!ctx) { window.SceneViz = { syncClients: noop, markActivity: noop, seed: noop, pulse: noop, ready: false }; return; }
+
+  var reduce = false;
+  try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+
+  var FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  var COL = {
+    node: [38, 38, 42],
+    border: [74, 76, 84],
+    accent: [107, 155, 255],
+    line: [96, 112, 150],
+    text: [150, 156, 170],
+    hot: [232, 244, 255]
+  };
+  // one colour per client (right) and per agent (left)
+  var GAME_COLORS = [[96, 178, 255], [96, 214, 201], [214, 161, 74], [186, 140, 255], [94, 200, 130], [232, 120, 170]];
+  var AGENT_COLORS = [[255, 150, 90], [140, 200, 255], [130, 230, 190]];
+  var BRIDGE_COLOR = [96, 214, 201];
+  // gradient for the response arc going back to the agents
+  var RET_A = [96, 205, 255], RET_MID = [150, 150, 255], RET_B = [202, 130, 255];
+
+  function rgba(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  function gradLerp(t) { return t < 0.5 ? mix(RET_A, RET_MID, t * 2) : mix(RET_MID, RET_B, (t - 0.5) * 2); }
+
+  var W = 0, H = 0, dpr = 1, clock = 0;
+  var bridge = { x: 0, y: 0, r: 18, pulse: 0, kind: "bridge", data: {}, scale: 1, hover: 0, hoverS: 0, color: BRIDGE_COLOR };
+  var games = [];
+  var agents = [];
+  var packets = [];
+  var AGENT_MAX = 2, AGENT_TTL = 70;
+
+  function resize() {
+    W = host.clientWidth || 800; H = host.clientHeight || 320;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    layout();
+  }
+  function layout() {
+    bridge.x = W * 0.5; bridge.y = H * 0.5;
+    var pad = 58;
+    function place(arr, x) {
+      var n = arr.length;
+      for (var i = 0; i < n; i++) {
+        var t = n <= 1 ? 0.5 : i / (n - 1);
+        arr[i].tx = x; arr[i].ty = pad + t * (H - pad * 2);
+        arr[i].midFrac = 0.42 + (i % 3) * 0.16;
+      }
+    }
+    place(agents, W * 0.2);
+    place(games, W * 0.8);
+  }
+
+  function initialOf(nd) {
+    var d = nd.data || {};
+    var s = d.displayName || d.username || nd.id || "?";
+    return (String(s).charAt(0) || "?").toUpperCase();
+  }
+  function loadAvatar(nd) {
+    if (nd.imgTried || !nd.data || !nd.data.userId) return;
+    nd.imgTried = true;
+    var im = new Image();
+    im.onload = function () { nd.img = im; };
+    im.onerror = function () { nd.img = null; };
+    im.src = "https://www.roblox.com/headshot-thumbnail/image?userId=" + nd.data.userId + "&width=150&height=150&format=png";
+  }
+  function makeNode(id, kind, data, color) {
+    return { id: id, kind: kind, data: data || {}, color: color || COL.accent, x: bridge.x || 0, y: bridge.y || 0, tx: 0, ty: 0, scale: 0.001, target: 1, pulse: 0, hover: 0, hoverS: 0, calls: 0, lastTool: "", lastOk: true, lastSeen: clock, midFrac: 0.5, img: null, imgTried: false };
+  }
+  function gameByName(name) {
+    if (!name) return null;
+    for (var i = 0; i < games.length; i++) {
+      var d = games[i].data || {};
+      if (d.displayName === name || d.username === name || d.clientId === name) return games[i];
+    }
+    return null;
+  }
+  function ensureAgent(sid, animate) {
+    if (!sid) return null;
+    for (var i = 0; i < agents.length; i++) { if (agents[i].id === sid) { agents[i].lastSeen = clock; return agents[i]; } }
+    var a = makeNode(sid, "agent", {}, AGENT_COLORS[agents.length % AGENT_COLORS.length]);
+    a.x = bridge.x; a.y = bridge.y;
+    agents.push(a);
+    if (agents.length > AGENT_MAX) { agents.sort(function (p, q) { return q.lastSeen - p.lastSeen; }); agents.splice(AGENT_MAX); }
+    layout();
+    if (animate) spawnFlow(a, bridge, a.midFrac, a.color);
+    return a;
+  }
+  function spawnFlow(from, to, midFrac, col) {
+    if (reduce) return;
+    packets.push({ a: from, b: to, midFrac: midFrac, t: 0, life: 0.5, col: col, ret: false });
+  }
+  // one continuous request comet that travels the full agent -> bridge -> client path
+  function spawnRequest(agent, game, col) {
+    if (reduce) return;
+    packets.push({ reqFull: true, ag: agent, gm: game, t: 0, life: 0.95, col: col });
+  }
+  function requestPath(agent, game) {
+    return elbowPath(agent, bridge, agent.midFrac).concat(elbowPath(bridge, game, game.midFrac).slice(1));
+  }
+  function spawnReturn(g) {
+    if (reduce || !g || !agents.length) return;
+    for (var i = 0; i < agents.length; i++) packets.push({ ret: true, g: g, ag: agents[i], t: 0, life: 0.95, col: RET_MID });
+  }
+  function syncClients(list) {
+    list = list || [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i]; var id = d.clientId || String(i); seen[id] = true;
+      var g = null;
+      for (var j = 0; j < games.length; j++) { if (games[j].id === id) { g = games[j]; break; } }
+      if (g) { g.data = d; g.target = 1; loadAvatar(g); }
+      else {
+        var ng = makeNode(id, "game", d, GAME_COLORS[games.length % GAME_COLORS.length]);
+        ng.x = bridge.x; ng.y = bridge.y;
+        games.push(ng); loadAvatar(ng); layout();
+        spawnFlow(bridge, ng, ng.midFrac, ng.color);
+      }
+    }
+    for (var k = 0; k < games.length; k++) { if (!seen[games[k].id]) games[k].target = 0; }
+    layout();
+  }
+  function seed(arr) {
+    arr = arr || [];
+    var uniq = {};
+    for (var i = 0; i < arr.length; i++) {
+      var sid = arr[i].sessionId;
+      if (sid && !uniq[sid]) { uniq[sid] = true; ensureAgent(sid, false); }
+    }
+  }
+  function markActivity(rec) {
+    rec = rec || {};
+    var isErr = rec.outcome === "error";
+    var a = ensureAgent(rec.sessionId, true);
+    var g = gameByName(rec.clientName);
+    var col = isErr ? COL.flowErr : (g ? g.color : COL.flow);
+    if (a) { a.calls += 1; a.lastTool = rec.toolName || a.lastTool; a.lastOk = !isErr; a.pulse = 1; }
+    if (g) { g.lastTool = rec.toolName || g.lastTool; g.lastOk = !isErr; g.pulse = 1; }
+    if (a && g) spawnRequest(a, g, col);
+    else if (a) spawnFlow(a, bridge, a.midFrac, col);
+    else if (g) spawnFlow(bridge, g, g.midFrac, col);
+    if (g) spawnReturn(g);
+    bridge.pulse = 1;
+  }
+  function pulse() { bridge.pulse = 1; }
+
+  // --- geometry ---
+  function elbowPath(a, b, midFrac) {
+    var midX = a.x + (b.x - a.x) * midFrac;
+    return [{ x: a.x, y: a.y }, { x: midX, y: a.y }, { x: midX, y: b.y }, { x: b.x, y: b.y }];
+  }
+  // orthogonal return bus that loops over the top, games (right) -> agents (left),
+  // drawn in the same linear + rounded-corner style as the request traces
+  // return "manifold": a bus across the top with a riser on each side. Every game
+  // taps the right riser; the left riser fans out to every agent, so each client's
+  // output is relayed back to both agents.
+  function returnGeom() { return { topY: 20, rx: W * 0.94, lx: W * 0.06 }; }
+  function returnPathFor(game, agent) {
+    var G = returnGeom();
+    return [
+      { x: game.x, y: game.y }, { x: G.rx, y: game.y }, { x: G.rx, y: G.topY },
+      { x: G.lx, y: G.topY }, { x: G.lx, y: agent.y }, { x: agent.x, y: agent.y }
+    ];
+  }
+  function posAlong(path, t) {
+    var total = 0, seg = [];
+    for (var i = 0; i < path.length - 1; i++) { var dx = path[i + 1].x - path[i].x, dy = path[i + 1].y - path[i].y; var d = Math.sqrt(dx * dx + dy * dy); seg.push(d); total += d; }
+    if (total === 0) return path[0];
+    var target = t * total, acc = 0;
+    for (var j = 0; j < seg.length; j++) {
+      if (acc + seg[j] >= target) { var lt = seg[j] > 0 ? (target - acc) / seg[j] : 0; return { x: path[j].x + (path[j + 1].x - path[j].x) * lt, y: path[j].y + (path[j + 1].y - path[j].y) * lt }; }
+      acc += seg[j];
+    }
+    return path[path.length - 1];
+  }
+  // Turn a sharp orthogonal polyline into one with sampled rounded corners, so the
+  // drawn line and the travelling comet follow exactly the same curved path.
+  function roundedPolyline(pts, radius) {
+    if (pts.length < 3) return pts;
+    var out = [{ x: pts[0].x, y: pts[0].y }];
+    for (var i = 1; i < pts.length - 1; i++) {
+      var A = pts[i - 1], B = pts[i], C = pts[i + 1];
+      var d1 = Math.sqrt((A.x - B.x) * (A.x - B.x) + (A.y - B.y) * (A.y - B.y));
+      var d2 = Math.sqrt((C.x - B.x) * (C.x - B.x) + (C.y - B.y) * (C.y - B.y));
+      if (d1 < 1 || d2 < 1) continue;
+      var r = Math.min(radius, d1 * 0.5, d2 * 0.5);
+      var t1x = B.x + (A.x - B.x) / d1 * r, t1y = B.y + (A.y - B.y) / d1 * r;
+      var t2x = B.x + (C.x - B.x) / d2 * r, t2y = B.y + (C.y - B.y) / d2 * r;
+      for (var s = 0; s <= 5; s++) {
+        var u = s / 5, iu = 1 - u;
+        out.push({ x: iu * iu * t1x + 2 * iu * u * B.x + u * u * t2x, y: iu * iu * t1y + 2 * iu * u * B.y + u * u * t2y });
+      }
+    }
+    out.push({ x: pts[pts.length - 1].x, y: pts[pts.length - 1].y });
+    return out;
+  }
+  function strokePolyline(pts) {
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+  }
+
+  // A bright "data" comet gliding along a path (additive glow, white-hot core, trail).
+  function drawComet(path, tt, col, headR, coreR, trailN, intensity, spacing) {
+    if (tt < 0) tt = 0; else if (tt > 1) tt = 1;
+    for (var s = trailN; s >= 1; s--) {
+      var st = tt - s * spacing; if (st < 0) continue;
+      var q = posAlong(path, st);
+      var a = 1 - s / trailN;
+      ctx.fillStyle = rgba(col, a * a * 0.55 * intensity);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 0.7 + a * coreR * 1.25, 0, Math.PI * 2); ctx.fill();
+    }
+    var h = posAlong(path, tt);
+    var g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, headR);
+    g.addColorStop(0, rgba(col, 0.9 * intensity));
+    g.addColorStop(0.4, rgba(col, 0.42 * intensity));
+    g.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h.x, h.y, headR, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = rgba(COL.hot, 0.92 * intensity);
+    ctx.beginPath(); ctx.arc(h.x, h.y, coreR, 0, Math.PI * 2); ctx.fill();
+  }
+  function drawElbow(a, b, midFrac, phase, alpha, active, color) {
+    var rp = roundedPolyline(elbowPath(a, b, midFrac), 13);
+    ctx.strokeStyle = rgba(COL.line, alpha);
+    ctx.lineWidth = 1.2; ctx.lineJoin = "round";
+    strokePolyline(rp);
+    if (!reduce) {
+      var col = active ? mix(color, COL.hot, 0.3) : color;
+      var it = active ? 1 : 0.72, hr = active ? 12 : 9, cr = active ? 2 : 1.5;
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      var t1 = phase - Math.floor(phase);
+      var t2 = (phase + 0.5) - Math.floor(phase + 0.5);
+      drawComet(rp, t1, col, hr, cr, 6, it, 0.028);
+      drawComet(rp, t2, col, hr * 0.82, cr * 0.85, 5, it * 0.7, 0.028);
+      ctx.restore();
+    }
+  }
+  function drawReturn(phase) {
+    if (!games.length || !agents.length) return;
+    var G = returnGeom();
+    var gyMax = G.topY, ayMax = G.topY, i;
+    for (i = 0; i < games.length; i++) gyMax = Math.max(gyMax, games[i].y);
+    for (i = 0; i < agents.length; i++) ayMax = Math.max(ayMax, agents[i].y);
+    // Same plain "blank" line as the request traces (one line style everywhere) —
+    // the return channel is just the trace prolonged over the top.
+    ctx.strokeStyle = rgba(COL.line, 0.11); ctx.lineWidth = 1.2; ctx.lineJoin = "round";
+    // bus + the two side risers as one rounded path
+    strokePolyline(roundedPolyline([{ x: G.rx, y: gyMax }, { x: G.rx, y: G.topY }, { x: G.lx, y: G.topY }, { x: G.lx, y: ayMax }], 13));
+    // straight taps: each game -> right riser, left riser -> each agent
+    ctx.beginPath();
+    for (i = 0; i < games.length; i++) { ctx.moveTo(games[i].x, games[i].y); ctx.lineTo(G.rx, games[i].y); }
+    for (i = 0; i < agents.length; i++) { ctx.moveTo(G.lx, agents[i].y); ctx.lineTo(agents[i].x, agents[i].y); }
+    ctx.stroke();
+    if (!reduce) {
+      var bus = [{ x: G.rx, y: G.topY }, { x: G.lx, y: G.topY }];
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      var t1 = phase - Math.floor(phase); drawComet(bus, t1, gradLerp(t1), 9, 1.5, 5, 0.58, 0.03);
+      var t2 = (phase + 0.5) - Math.floor(phase + 0.5); drawComet(bus, t2, gradLerp(t2), 8, 1.4, 4, 0.42, 0.03);
+      ctx.restore();
+    }
+  }
+  function drawPacket(pk) {
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    if (pk.ret) {
+      var tt = Math.min(1, pk.t);
+      drawComet(roundedPolyline(returnPathFor(pk.g, pk.ag), 13), tt, gradLerp(tt), 13, 2.2, 8, 1, 0.03);
+    } else if (pk.reqFull) {
+      drawComet(roundedPolyline(requestPath(pk.ag, pk.gm), 13), Math.min(1, pk.t), pk.col, 14, 2.4, 8, 1, 0.03);
+    } else {
+      drawComet(roundedPolyline(elbowPath(pk.a, pk.b, pk.midFrac), 13), Math.min(1, pk.t), pk.col, 14, 2.4, 8, 1, 0.03);
+    }
+    ctx.restore();
+  }
+  function drawNode(nd, baseR) {
+    var col = nd.color || COL.accent;
+    var r = baseR * (0.55 + Math.max(0, nd.scale) * 0.45) * (1 + nd.hoverS * 0.14);
+    var glowA = nd.pulse * 0.3 + nd.hoverS * 0.22 + (nd.kind === "bridge" ? 0.14 : 0.07);
+    if (glowA > 0.01) {
+      var gg = ctx.createRadialGradient(nd.x, nd.y, 0, nd.x, nd.y, r * 2.6);
+      gg.addColorStop(0, rgba(col, glowA));
+      gg.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(nd.x, nd.y, r * 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+    var img = nd.img && nd.img.complete && nd.img.naturalWidth ? nd.img : null;
+    if (img) {
+      ctx.save(); ctx.beginPath(); ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(img, nd.x - r, nd.y - r, r * 2, r * 2); ctx.restore();
+    } else {
+      ctx.fillStyle = rgba(mix(COL.node, col, nd.kind === "bridge" ? 0.22 : 0.16), 1);
+      ctx.beginPath(); ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2); ctx.fill();
+      if (nd.kind === "game") {
+        ctx.fillStyle = rgba(COL.hot, 0.92);
+        ctx.font = "600 " + Math.round(r * 0.9) + "px " + FONT;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(initialOf(nd), nd.x, nd.y + 0.5);
+      } else if (nd.kind === "agent") {
+        ctx.fillStyle = rgba(mix(col, [255, 255, 255], 0.28), 0.9);
+        ctx.beginPath(); ctx.arc(nd.x, nd.y, Math.max(1.5, r * 0.34), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    var borderCol = mix(mix(COL.border, col, 0.5), col, Math.min(1, nd.pulse * 0.6 + nd.hoverS * 0.5));
+    ctx.strokeStyle = rgba(borderCol, 0.92);
+    ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2); ctx.stroke();
+    return r;
+  }
+  function drawName(nd, r) {
+    var d = nd.data || {};
+    var name = d.displayName || d.username || String(nd.id).slice(0, 10);
+    ctx.font = "11.5px " + FONT;
+    ctx.textBaseline = "middle"; ctx.textAlign = "right";
+    ctx.fillStyle = rgba(COL.text, 0.42 + nd.scale * 0.4 + nd.hoverS * 0.3);
+    ctx.fillText(name, nd.x - r - 10, nd.y);
+  }
+
+  var hovered = null;
+  var mx = -1, my = -1, pointerIn = false;
+  function hitTest() {
+    var best = null, bd = 1e9;
+    function tryN(nd, r) { var dx = mx - nd.x, dy = my - nd.y; var d = dx * dx + dy * dy; if (d < (r + 9) * (r + 9) && d < bd) { bd = d; best = nd; } }
+    for (var i = 0; i < games.length; i++) tryN(games[i], 15);
+    for (var j = 0; j < agents.length; j++) tryN(agents[j], 11);
+    return best;
+  }
+  function setText(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+  function fillMeta(items) {
+    var meta = document.getElementById("tip-meta"); if (!meta) return;
+    meta.innerHTML = "";
+    for (var i = 0; i < items.length; i++) { if (!items[i]) continue; var s = document.createElement("span"); s.className = "k"; s.textContent = items[i]; meta.appendChild(s); }
+  }
+  function fillAct(text, isErr) {
+    var act = document.getElementById("tip-act"); if (!act) return;
+    act.className = "tip-act" + (isErr ? " err" : "");
+    act.innerHTML = "";
+    var dot = document.createElement("span"); dot.className = "adot"; act.appendChild(dot);
+    var tx = document.createElement("span"); tx.textContent = text; act.appendChild(tx);
+  }
+  function fillTip(nd) {
+    if (!tip) return;
+    var av = document.getElementById("tip-av");
+    var d = nd.data || {};
+    if (nd.kind === "game") {
+      var name = d.displayName || d.username || nd.id;
+      if (av) {
+        av.innerHTML = "";
+        if (d.userId) { var img = document.createElement("img"); img.src = "https://www.roblox.com/headshot-thumbnail/image?userId=" + d.userId + "&width=150&height=150&format=png"; img.onerror = function () { av.textContent = (String(name).charAt(0) || "?").toUpperCase(); }; av.appendChild(img); }
+        else av.textContent = (String(name).charAt(0) || "?").toUpperCase();
+      }
+      setText("tip-name", name);
+      setText("tip-user", (d.username ? "@" + d.username : (d.clientId || "")) + (d.userId ? "  ·  " + d.userId : ""));
+      fillMeta([d.gameName, d.executor, d.placeId ? "Place " + d.placeId : "", (d.capabilities || 0) + " caps"]);
+      fillAct(nd.lastTool ? ((nd.lastOk ? "ran " : "errored ") + nd.lastTool) : "connected", nd.lastTool && !nd.lastOk);
+    } else {
+      if (av) { av.innerHTML = ""; av.textContent = "AI"; }
+      setText("tip-name", "AI agent");
+      setText("tip-user", "session " + String(nd.id).slice(0, 12));
+      fillMeta(["MCP session", nd.calls + (nd.calls === 1 ? " call" : " calls")]);
+      fillAct(nd.lastTool ? ((nd.lastOk ? "ran " : "errored ") + nd.lastTool) : "connected", nd.lastTool && !nd.lastOk);
+    }
+  }
+  function positionTip(nd) {
+    if (!tip) return;
+    var tw = tip.offsetWidth || 200, th = tip.offsetHeight || 96;
+    var lx = nd.x + 20; if (lx + tw > W - 10) lx = nd.x - tw - 20; if (lx < 10) lx = 10;
+    var ly = nd.y - th * 0.5; if (ly < 8) ly = 8; if (ly + th > H - 8) ly = H - th - 8;
+    tip.style.left = lx + "px"; tip.style.top = ly + "px";
+  }
+  function setHover(nd) {
+    if (nd === hovered) return;
+    if (hovered) hovered.hover = 0;
+    hovered = nd;
+    host.style.cursor = nd ? "pointer" : "";
+    if (nd) { nd.hover = 1; fillTip(nd); if (tip) { tip.classList.add("show"); tip.setAttribute("aria-hidden", "false"); } }
+    else if (tip) { tip.classList.remove("show"); tip.setAttribute("aria-hidden", "true"); }
+  }
+
+  host.addEventListener("pointermove", function (e) {
+    var r = host.getBoundingClientRect();
+    mx = e.clientX - r.left; my = e.clientY - r.top; pointerIn = true;
+  });
+  host.addEventListener("pointerleave", function () { pointerIn = false; setHover(null); });
+
+  var rafId = 0, running = true;
+  function updateNode(nd) {
+    nd.x += (nd.tx - nd.x) * 0.14;
+    nd.y += (nd.ty - nd.y) * 0.14;
+    nd.scale += (nd.target - nd.scale) * 0.12;
+    nd.pulse = Math.max(0, nd.pulse - 0.016 * 1.3);
+    nd.hoverS += (nd.hover - nd.hoverS) * 0.2;
+  }
+  function frame() {
+    rafId = 0; if (!running) return;
+    clock += 0.016;
+    for (var i = agents.length - 1; i >= 0; i--) { if (clock - agents[i].lastSeen > AGENT_TTL) agents[i].target = 0; if (agents[i].target === 0 && agents[i].scale < 0.02) { if (agents[i] === hovered) setHover(null); agents.splice(i, 1); layout(); } }
+    for (var j = games.length - 1; j >= 0; j--) { if (games[j].target === 0 && games[j].scale < 0.02) { if (games[j] === hovered) setHover(null); games.splice(j, 1); layout(); } }
+
+    for (var a1 = 0; a1 < agents.length; a1++) updateNode(agents[a1]);
+    for (var g1 = 0; g1 < games.length; g1++) updateNode(games[g1]);
+    bridge.pulse = Math.max(0, bridge.pulse - 0.016 * 1.3);
+    bridge.hoverS += (bridge.hover - bridge.hoverS) * 0.2;
+
+    ctx.clearRect(0, 0, W, H);
+
+    var ph = reduce ? 0 : clock * 0.5;
+    if (agents.length && games.length) drawReturn(ph + 0.2);
+    for (var ai = 0; ai < agents.length; ai++) { var av = agents[ai]; drawElbow(av, bridge, av.midFrac, ph + ai * 0.4, 0.09 + av.scale * 0.05 + av.pulse * 0.18, av.pulse > 0.05, av.color); }
+    for (var gi = 0; gi < games.length; gi++) { var gv = games[gi]; drawElbow(bridge, gv, gv.midFrac, ph + 0.5 + gi * 0.4, 0.09 + gv.scale * 0.05 + gv.pulse * 0.18, gv.pulse > 0.05, gv.color); }
+
+    for (var p = packets.length - 1; p >= 0; p--) {
+      var pk = packets[p];
+      pk.t += 0.016 / pk.life;
+      drawPacket(pk);
+      if (pk.t >= 1.1) packets.splice(p, 1);
+    }
+
+    drawNode(bridge, bridge.r);
+    for (var ag = 0; ag < agents.length; ag++) drawNode(agents[ag], 11);
+    for (var ga = 0; ga < games.length; ga++) { var r2 = drawNode(games[ga], 15); drawName(games[ga], r2); }
+
+    if (pointerIn) setHover(hitTest());
+    if (hovered) positionTip(hovered);
+
+    rafId = requestAnimationFrame(frame);
+  }
+  function start() { if (!rafId) { running = true; rafId = requestAnimationFrame(frame); } }
+  document.addEventListener("visibilitychange", function () { if (document.hidden) running = false; else start(); });
+  if (window.ResizeObserver) { try { new ResizeObserver(resize).observe(host); } catch (e2) {} }
+  window.addEventListener("resize", resize);
+
+  resize();
+  host.classList.add("webgl");
+  window.SceneViz = { syncClients: syncClients, markActivity: markActivity, seed: seed, pulse: pulse, ready: true };
+  start();
+})();
+
+/* Click ripples on buttons and tabs — pure interaction polish. */
+(function () {
+  "use strict";
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    var b = t && t.closest ? t.closest(".out-btn, nav.tabs button, .cats button") : null;
+    if (!b) return;
+    var rect = b.getBoundingClientRect();
+    var d = Math.max(rect.width, rect.height);
+    var r = document.createElement("span");
+    r.className = "ripple";
+    r.style.width = d + "px";
+    r.style.height = d + "px";
+    r.style.left = (e.clientX - rect.left - d / 2) + "px";
+    r.style.top = (e.clientY - rect.top - d / 2) + "px";
+    b.appendChild(r);
+    setTimeout(function () { if (r.parentNode) r.parentNode.removeChild(r); }, 620);
+  });
 })();
 </script>
 </body>

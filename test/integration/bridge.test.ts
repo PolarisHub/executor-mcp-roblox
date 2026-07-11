@@ -230,6 +230,33 @@ describe("BridgeServer (integration)", () => {
     await waitFor(() => bridge.list().length === 0);
   });
 
+  it("does not reap a busy client mid-eval even when it never pongs", async () => {
+    // A CPU-bound eval can block the connector's single Luau VM so it cannot answer
+    // pings. The bridge must keep such a client (its per-eval deadline is
+    // authoritative) rather than dropping it and failing its work with a spurious
+    // ClientDisconnectedError.
+    const { bridge, port } = await startServer({ bridge: { heartbeatIntervalMs: 30 } });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+
+    // Never answer the op and never pong: the eval stays in-flight (pending).
+    const pending = bridge.eval(clientId, { source: "block", timeoutMs: 3000 });
+    pending.catch(() => undefined); // settled on teardown; avoid an unhandled rejection
+
+    // Ten+ heartbeat ticks pass (~300ms at 30ms). Without the busy-gate the client
+    // would have been reaped after ~3 ticks for missing pongs.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(bridge.list()).toHaveLength(1);
+    // Hard-close so the graceful server.close() in teardown doesn't wait on the
+    // still-open socket (the in-flight eval rejects; already .catch()'d above).
+    ws.terminate();
+  });
+
   it("bounds concurrent evals and drains queued work without flooding the client", async () => {
     const { bridge, port } = await startServer({
       bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 16 },

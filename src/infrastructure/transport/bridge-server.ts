@@ -695,6 +695,10 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
   }
 
   private handleMessage(connection: Connection, message: ClientMessage): void {
+    // Any inbound frame proves the connector is alive. Reset the heartbeat strike
+    // counter here (not only on `pong`) so a busy connector that is actively
+    // streaming results/output/rpc frames is never reaped for a late pong.
+    connection.missedPongs = 0;
     switch (message.type) {
       case "result": {
         const ticket = connection.pending.get(message.id);
@@ -1074,7 +1078,11 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
 
     try {
       connection.socket.removeAllListeners();
-      connection.socket.close();
+      // Terminate rather than close(): we've already decided to drop this client,
+      // and a graceful close handshake to a dead/unresponsive peer never completes,
+      // leaving the underlying socket lingering (up to ws's 30s closeTimeout) and
+      // blocking a clean server shutdown. An immediate teardown is what we want.
+      connection.socket.terminate();
     } catch {
       // socket may already be closed; nothing actionable.
     }
@@ -1105,19 +1113,37 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
     const interval = this.config.bridge.heartbeatIntervalMs;
     this.heartbeat = setInterval(() => {
       for (const connection of [...this.connections.values()]) {
-        if (connection.missedPongs >= 2) {
+        // A connection with an in-flight eval is provably busy on our behalf — a
+        // CPU-bound, non-yielding eval can block the connector's single Luau VM so
+        // it cannot answer pings. Its own per-eval deadline is authoritative
+        // (ExecutionTimeoutError), so treat it as alive rather than reaping it and
+        // rejecting its work with a spurious ClientDisconnectedError.
+        const busy = connection.pending.size > 0;
+        if (busy) {
+          connection.missedPongs = 0;
+        } else if (connection.missedPongs >= 2) {
           this.dropConnection(connection, "missed two heartbeats");
           continue;
+        } else {
+          connection.missedPongs += 1;
         }
-        connection.missedPongs += 1;
         try {
           this.send(connection, { type: "ping", id: randomUUID() });
         } catch (error) {
-          this.logger.warn(
-            { err: toDomainError(error).toJSON(), clientId: connection.id },
-            "heartbeat send failed",
-          );
-          this.dropConnection(connection, "heartbeat send failed");
+          // A saturated write buffer means the socket is OPEN but backpressured:
+          // the client is alive, just draining slowly. Skip this ping (undoing the
+          // strike, since a skipped ping yields no pong) instead of force-closing a
+          // healthy client. Only a genuinely failed/closed socket is a real drop.
+          if (error instanceof BridgeOverloadedError) {
+            connection.missedPongs = Math.max(0, connection.missedPongs - 1);
+            this.metrics.increment("bridge.heartbeat.skipped_saturated");
+          } else {
+            this.logger.warn(
+              { err: toDomainError(error).toJSON(), clientId: connection.id },
+              "heartbeat send failed",
+            );
+            this.dropConnection(connection, "heartbeat send failed");
+          }
         }
       }
     }, interval);
