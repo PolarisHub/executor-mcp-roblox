@@ -3624,14 +3624,19 @@ return p"></textarea>
   var games = [];
   var agents = [];
   var packets = [];
+  var nextReturn = 0.8 + Math.random() * 1.6;
   var AGENT_MAX = 2, AGENT_TTL = 70;
 
   function resize() {
     W = host.clientWidth || 800; H = host.clientHeight || 320;
+    if (W <= 0 || H <= 0) return; // element momentarily collapsed; keep last frame
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     layout();
+    // Setting canvas.width clears it, so make sure the loop is alive to repaint
+    // (also revives the scene if it was ever left stopped after a tab switch).
+    if (!document.hidden) start();
   }
   function layout() {
     bridge.x = W * 0.5; bridge.y = H * 0.5;
@@ -3662,7 +3667,7 @@ return p"></textarea>
     im.src = "https://www.roblox.com/headshot-thumbnail/image?userId=" + nd.data.userId + "&width=150&height=150&format=png";
   }
   function makeNode(id, kind, data, color) {
-    return { id: id, kind: kind, data: data || {}, color: color || COL.accent, x: bridge.x || 0, y: bridge.y || 0, tx: 0, ty: 0, scale: 0.001, target: 1, pulse: 0, hover: 0, hoverS: 0, calls: 0, lastTool: "", lastOk: true, lastSeen: clock, midFrac: 0.5, img: null, imgTried: false };
+    return { id: id, kind: kind, data: data || {}, color: color || COL.accent, x: bridge.x || 0, y: bridge.y || 0, tx: 0, ty: 0, scale: 0.001, target: 1, pulse: 0, hover: 0, hoverS: 0, calls: 0, lastTool: "", lastOk: true, lastSeen: clock, midFrac: 0.5, nextSpark: Math.random() * 1.5, img: null, imgTried: false };
   }
   function gameByName(name) {
     if (!name) return null;
@@ -3783,8 +3788,8 @@ return p"></textarea>
       var r = Math.min(radius, d1 * 0.5, d2 * 0.5);
       var t1x = B.x + (A.x - B.x) / d1 * r, t1y = B.y + (A.y - B.y) / d1 * r;
       var t2x = B.x + (C.x - B.x) / d2 * r, t2y = B.y + (C.y - B.y) / d2 * r;
-      for (var s = 0; s <= 5; s++) {
-        var u = s / 5, iu = 1 - u;
+      for (var s = 0; s <= 9; s++) {
+        var u = s / 9, iu = 1 - u;
         out.push({ x: iu * iu * t1x + 2 * iu * u * B.x + u * u * t2x, y: iu * iu * t1y + 2 * iu * u * B.y + u * u * t2y });
       }
     }
@@ -3797,74 +3802,66 @@ return p"></textarea>
     ctx.stroke();
   }
 
-  // A bright "data" comet gliding along a path (additive glow, white-hot core, trail).
-  function drawComet(path, tt, col, headR, coreR, trailN, intensity, spacing) {
+  // A travelling "data" streak drawn as a glowing gradient LINE: a run of short
+  // segments whose alpha rises toward the head (so the trail itself is a gradient),
+  // capped with a white-hot gradient head. Rendered additively by the caller. The
+  // trail is sampled finely enough (fixed pixel-ish spacing) that it hugs rounded
+  // corners smoothly instead of chording across them.
+  function drawComet(path, tt, col, headR, coreR, trailLen, intensity) {
     if (tt < 0) tt = 0; else if (tt > 1) tt = 1;
-    for (var s = trailN; s >= 1; s--) {
-      var st = tt - s * spacing; if (st < 0) continue;
-      var q = posAlong(path, st);
-      var a = 1 - s / trailN;
-      ctx.fillStyle = rgba(col, a * a * 0.55 * intensity);
-      ctx.beginPath(); ctx.arc(q.x, q.y, 0.7 + a * coreR * 1.25, 0, Math.PI * 2); ctx.fill();
+    var tail = Math.max(0, tt - trailLen);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    var STEPS = Math.max(16, Math.ceil(trailLen * 160));
+    var prev = posAlong(path, tail);
+    for (var i = 1; i <= STEPS; i++) {
+      var t = tail + (tt - tail) * (i / STEPS);
+      var p = posAlong(path, t);
+      var a = i / STEPS;
+      ctx.strokeStyle = rgba(col, a * a * 0.6 * intensity);
+      ctx.lineWidth = 0.6 + a * (coreR + 1.3);
+      ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      prev = p;
     }
     var h = posAlong(path, tt);
     var g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, headR);
-    g.addColorStop(0, rgba(col, 0.9 * intensity));
-    g.addColorStop(0.4, rgba(col, 0.42 * intensity));
+    g.addColorStop(0, rgba(mix(col, COL.hot, 0.55), 0.95 * intensity));
+    g.addColorStop(0.4, rgba(col, 0.4 * intensity));
     g.addColorStop(1, rgba(col, 0));
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h.x, h.y, headR, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = rgba(COL.hot, 0.92 * intensity);
+    ctx.fillStyle = rgba(COL.hot, 0.9 * intensity);
     ctx.beginPath(); ctx.arc(h.x, h.y, coreR, 0, Math.PI * 2); ctx.fill();
   }
-  function drawElbow(a, b, midFrac, phase, alpha, active, color) {
-    var rp = roundedPolyline(elbowPath(a, b, midFrac), 13);
+  // The static links are plain "blank" gray lines; all the motion is the streaks.
+  function drawElbow(a, b, midFrac, alpha) {
     ctx.strokeStyle = rgba(COL.line, alpha);
     ctx.lineWidth = 1.2; ctx.lineJoin = "round";
-    strokePolyline(rp);
-    if (!reduce) {
-      var col = active ? mix(color, COL.hot, 0.3) : color;
-      var it = active ? 1 : 0.72, hr = active ? 12 : 9, cr = active ? 2 : 1.5;
-      ctx.save(); ctx.globalCompositeOperation = "lighter";
-      var t1 = phase - Math.floor(phase);
-      var t2 = (phase + 0.5) - Math.floor(phase + 0.5);
-      drawComet(rp, t1, col, hr, cr, 6, it, 0.028);
-      drawComet(rp, t2, col, hr * 0.82, cr * 0.85, 5, it * 0.7, 0.028);
-      ctx.restore();
-    }
+    strokePolyline(roundedPolyline(elbowPath(a, b, midFrac), 13));
   }
-  function drawReturn(phase) {
+  function drawReturn() {
     if (!games.length || !agents.length) return;
     var G = returnGeom();
-    var gyMax = G.topY, ayMax = G.topY, i;
-    for (i = 0; i < games.length; i++) gyMax = Math.max(gyMax, games[i].y);
-    for (i = 0; i < agents.length; i++) ayMax = Math.max(ayMax, agents[i].y);
-    // Same plain "blank" line as the request traces (one line style everywhere) —
-    // the return channel is just the trace prolonged over the top.
-    ctx.strokeStyle = rgba(COL.line, 0.11); ctx.lineWidth = 1.2; ctx.lineJoin = "round";
-    // bus + the two side risers as one rounded path
-    strokePolyline(roundedPolyline([{ x: G.rx, y: gyMax }, { x: G.rx, y: G.topY }, { x: G.lx, y: G.topY }, { x: G.lx, y: ayMax }], 13));
-    // straight taps: each game -> right riser, left riser -> each agent
-    ctx.beginPath();
-    for (i = 0; i < games.length; i++) { ctx.moveTo(games[i].x, games[i].y); ctx.lineTo(G.rx, games[i].y); }
-    for (i = 0; i < agents.length; i++) { ctx.moveTo(G.lx, agents[i].y); ctx.lineTo(agents[i].x, agents[i].y); }
-    ctx.stroke();
-    if (!reduce) {
-      var bus = [{ x: G.rx, y: G.topY }, { x: G.lx, y: G.topY }];
-      ctx.save(); ctx.globalCompositeOperation = "lighter";
-      var t1 = phase - Math.floor(phase); drawComet(bus, t1, gradLerp(t1), 9, 1.5, 5, 0.58, 0.03);
-      var t2 = (phase + 0.5) - Math.floor(phase + 0.5); drawComet(bus, t2, gradLerp(t2), 8, 1.4, 4, 0.42, 0.03);
-      ctx.restore();
+    ctx.strokeStyle = rgba(COL.line, 0.09); ctx.lineWidth = 1.2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    // the top bus, plus every tap+riser drawn as a rounded L so the corner where a
+    // tap meets its riser is curved (matching the streaks) — no square T-junctions.
+    strokePolyline([{ x: G.rx, y: G.topY }, { x: G.lx, y: G.topY }]);
+    for (var i = 0; i < games.length; i++) {
+      strokePolyline(roundedPolyline([{ x: games[i].x, y: games[i].y }, { x: G.rx, y: games[i].y }, { x: G.rx, y: G.topY }], 13));
+    }
+    for (var j = 0; j < agents.length; j++) {
+      strokePolyline(roundedPolyline([{ x: G.lx, y: G.topY }, { x: G.lx, y: agents[j].y }, { x: agents[j].x, y: agents[j].y }], 13));
     }
   }
   function drawPacket(pk) {
+    var it = pk.intensity == null ? 1 : pk.intensity;
+    var hr = 6 + it * 8, cr = 1 + it * 1.4, len = pk.len || 0.22;
+    var tt = Math.min(1, pk.t);
     ctx.save(); ctx.globalCompositeOperation = "lighter";
     if (pk.ret) {
-      var tt = Math.min(1, pk.t);
-      drawComet(roundedPolyline(returnPathFor(pk.g, pk.ag), 13), tt, gradLerp(tt), 13, 2.2, 8, 1, 0.03);
+      drawComet(roundedPolyline(returnPathFor(pk.g, pk.ag), 13), tt, gradLerp(tt), hr, cr, len, it);
     } else if (pk.reqFull) {
-      drawComet(roundedPolyline(requestPath(pk.ag, pk.gm), 13), Math.min(1, pk.t), pk.col, 14, 2.4, 8, 1, 0.03);
+      drawComet(roundedPolyline(requestPath(pk.ag, pk.gm), 13), tt, pk.col, hr, cr, len, it);
     } else {
-      drawComet(roundedPolyline(elbowPath(pk.a, pk.b, pk.midFrac), 13), Math.min(1, pk.t), pk.col, 14, 2.4, 8, 1, 0.03);
+      drawComet(roundedPolyline(elbowPath(pk.a, pk.b, pk.midFrac), 13), tt, pk.col, hr, cr, len, it);
     }
     ctx.restore();
   }
@@ -3997,10 +3994,37 @@ return p"></textarea>
 
     ctx.clearRect(0, 0, W, H);
 
-    var ph = reduce ? 0 : clock * 0.5;
-    if (agents.length && games.length) drawReturn(ph + 0.2);
-    for (var ai = 0; ai < agents.length; ai++) { var av = agents[ai]; drawElbow(av, bridge, av.midFrac, ph + ai * 0.4, 0.09 + av.scale * 0.05 + av.pulse * 0.18, av.pulse > 0.05, av.color); }
-    for (var gi = 0; gi < games.length; gi++) { var gv = games[gi]; drawElbow(bridge, gv, gv.midFrac, ph + 0.5 + gi * 0.4, 0.09 + gv.scale * 0.05 + gv.pulse * 0.18, gv.pulse > 0.05, gv.color); }
+    // Truly-random ambient data: each live link fires a streak on its own random
+    // timer (no shared clock/phase), coloured by that agent/client.
+    if (!reduce) {
+      // skewed (product-of-randoms) intervals give clumps of quick streaks plus the
+      // occasional long gap, so the flow reads as organic rather than metronomic.
+      for (var sa = 0; sa < agents.length; sa++) {
+        var an = agents[sa];
+        an.nextSpark -= 0.016;
+        if (an.nextSpark <= 0) {
+          if (an.scale > 0.35) packets.push({ a: an, b: bridge, midFrac: an.midFrac, t: 0, life: 0.75 + Math.random() * 1.7, col: an.color, intensity: 0.45 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.16 });
+          an.nextSpark = 0.18 + Math.random() * Math.random() * 4;
+        }
+      }
+      for (var sg = 0; sg < games.length; sg++) {
+        var gn = games[sg];
+        gn.nextSpark -= 0.016;
+        if (gn.nextSpark <= 0) {
+          if (gn.scale > 0.35) packets.push({ a: bridge, b: gn, midFrac: gn.midFrac, t: 0, life: 0.75 + Math.random() * 1.7, col: gn.color, intensity: 0.45 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.16 });
+          gn.nextSpark = 0.18 + Math.random() * Math.random() * 4;
+        }
+      }
+      nextReturn -= 0.016;
+      if (nextReturn <= 0) {
+        if (agents.length && games.length) packets.push({ ret: true, g: games[(Math.random() * games.length) | 0], ag: agents[(Math.random() * agents.length) | 0], t: 0, life: 1.2 + Math.random() * 1.6, intensity: 0.4 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.14 });
+        nextReturn = 0.25 + Math.random() * Math.random() * 3.6;
+      }
+    }
+
+    if (agents.length && games.length) drawReturn();
+    for (var ai = 0; ai < agents.length; ai++) { var av = agents[ai]; drawElbow(av, bridge, av.midFrac, 0.09 + av.scale * 0.05 + av.pulse * 0.18); }
+    for (var gi = 0; gi < games.length; gi++) { var gv = games[gi]; drawElbow(bridge, gv, gv.midFrac, 0.09 + gv.scale * 0.05 + gv.pulse * 0.18); }
 
     for (var p = packets.length - 1; p >= 0; p--) {
       var pk = packets[p];
@@ -4018,8 +4042,14 @@ return p"></textarea>
 
     rafId = requestAnimationFrame(frame);
   }
-  function start() { if (!rafId) { running = true; rafId = requestAnimationFrame(frame); } }
+  // Always mark running; only schedule a frame if one isn't already pending. This
+  // must set running unconditionally: when a tab is un-hidden, start() can run
+  // while the paused frame is still scheduled (rafId != 0), and if it didn't flip
+  // running back to true that resuming frame would return early and freeze forever.
+  function start() { running = true; if (!rafId) rafId = requestAnimationFrame(frame); }
   document.addEventListener("visibilitychange", function () { if (document.hidden) running = false; else start(); });
+  window.addEventListener("pageshow", start);
+  window.addEventListener("focus", start);
   if (window.ResizeObserver) { try { new ResizeObserver(resize).observe(host); } catch (e2) {} }
   window.addEventListener("resize", resize);
 
