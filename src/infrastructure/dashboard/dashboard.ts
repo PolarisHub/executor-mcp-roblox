@@ -22,8 +22,8 @@ const CLASS_ICONS_PNG = join(dirname(fileURLToPath(import.meta.url)), "../../../
 /**
  * Serves the web dashboard and its JSON API on the bridge's HTTP server. The
  * read-only endpoints pull from the application ports (client directory, tool
- * registry, activity log, health). The Explorer endpoints run guarded Luau on a
- * chosen client through the execution gateway to fetch its live game tree.
+ * registry, activity log, health). The Explorer endpoints run guarded, bounded
+ * Luau on a chosen client to fetch its live tree and inspect script closures.
  */
 export class Dashboard {
   private readonly explorer: ExplorerService;
@@ -316,8 +316,37 @@ export class Dashboard {
         return c.json({ error: err.message, code: err.code }, 502);
       }
     });
-    app.get("/api/explore/properties", explore((id, p) => this.explorer.properties(id, p)));
-    app.get("/api/explore/connections", explore((id, p) => this.explorer.connections(id, p)));
+    app.get(
+      "/api/explore/properties",
+      explore((id, p) => this.explorer.properties(id, p)),
+    );
+    app.get(
+      "/api/explore/connections",
+      explore((id, p) => this.explorer.connections(id, p)),
+    );
+    app.get(
+      "/api/explore/script",
+      explore((id, p) => this.explorer.script(id, p)),
+    );
+    app.get("/api/explore/references", async (c) => {
+      const clientId = c.req.query("client") ?? "";
+      const path = c.req.query("path") ?? "game";
+      const functionId = c.req.query("function") ?? "";
+      if (!clientId) return c.json({ error: "missing ?client" }, 400);
+      if (!functionId) return c.json({ error: "missing ?function" }, 400);
+      const maxScannedRaw = c.req.query("maxScanned");
+      const maxScanned = maxScannedRaw !== undefined ? Number(maxScannedRaw) : undefined;
+      try {
+        return c.json(
+          await this.explorer.references(clientId, path, functionId, {
+            ...(Number.isFinite(maxScanned) ? { maxScanned: maxScanned! } : {}),
+          }),
+        );
+      } catch (thrown) {
+        const err = toDomainError(thrown);
+        return c.json({ error: err.message, code: err.code }, 502);
+      }
+    });
   }
 
   /**

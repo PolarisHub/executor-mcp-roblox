@@ -4,7 +4,7 @@
 > `defineTool` contract (a handful of legacy tools were merged into cleaner
 > equivalents — e.g. `get-data-by-code` → `run-luau`, `get-descendants-tree` →
 > `get-instance-tree` — and `list-tools` is now a built-in of the MCP adapter).
-> The toolkit now ships **252 tools across 22 categories**: full functional parity
+> The toolkit now ships **286 tools across 22 categories**: full functional parity
 > plus new **Volt power tools** (Filesystem, Crypt, Drawing, RakNet packets,
 > WebSocket, HTTP, Fast Flags, `filtergc`, `gethui`, cache, debug-stack tools, and
 > the grounded Intelligence layer).
@@ -103,25 +103,31 @@ The Luau is identical; the wrapper is what changes. The connector now JSON-encod
 
 Counts are the canonical post-migration totals (the categories are the fixed set in `domain/tool/category.ts`). Run `list-tools` for the live count at any point during the migration.
 
-| Category              | Target # | Scope                                                                                                                                         |
-| --------------------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reverse Engineering   |       30 | GC function discovery, closure constants / upvalues / protos, function hashing, bytecode-size outliers, env & registry inspection             |
-| Metatables & Closures |       19 | read/hook metamethods, raw metatables, readonly state, inspect/patch closures, script & function environments, hook management                |
-| Signals & Connections |       16 | enumerate connections, fire/replicate signals, read signal arguments, inspect connection internals, replication whitelist                     |
-| Inspection            |       15 | decompile/read scripts, CSS-like instance search, descendant trees, game info, properties/attributes, semantic search, console output         |
-| Disassembly & Xrefs   |       12 | strings window, string/global/function/instance/remote xrefs, call graphs, disassembly, duplicate & shared-upvalue detection, bytecode search |
-| Actions               |       10 | write live state: set property/attribute (single or bulk), create/clone/destroy instances, invoke methods, fire remotes, dump tables/threads  |
-| Actors & Hidden       |       10 | Actor scripts, nil-parented/detached instances, hidden scripts/GUIs/remotes, running-script & actor detail, surface summary                   |
-| Execution             |       10 | run Luau (sync/await/file/batch/deferred), profile time & memory, looped polling, single-expression eval, watchdog timeout                    |
-| Remote Spy            |       10 | remote inventory, signature probing, intercept/log/block/ignore (Cobalt), traffic tracing, single-remote monitoring, callback inspection      |
-| Diagnostics           |        9 | bridge/connector status, executor identity & capability matrix, memory/instance/render stats, anti-cheat recon, tool catalog                  |
-| GUI                   |       10 | list the GUI tree, read/set text, click buttons, type text, fire ProximityPrompt/ClickDetector, send keyboard/mouse/touch/gamepad input, control the camera |
-| Instrumentation       |        8 | hook-and-log, count calls, profile call durations, spoof returns, block functions, capture log output, watch property changes                 |
-| Memory Scan           |        8 | search by value/key/number-range/string, read/write any path, find table references, watch a value                                            |
-| Session & Client      |        7 | list/select/clear active client (per-session, account-sticky), player roster, local player & place details                                    |
-| Semantic Search       |        2 | embedding-indexed script search stats & index management                                                                                      |
-| Windows               |        2 | list Roblox windows, capture window screenshots (Windows only)                                                                                |
-| **Total**             |  **176** |                                                                                                                                               |
+| Category              | Target # | Scope                                                                                                                      |
+| --------------------- | -------: | -------------------------------------------------------------------------------------------------------------------------- |
+| Actions               |       10 | write properties/attributes, create/clone/destroy instances, invoke methods, and fire remotes                              |
+| Actors & Hidden       |       26 | Actor/state execution, LuaStateProxy, channels/events/monitors, Actor scripts, and detached or hidden surfaces             |
+| Crypt                 |        7 | hashing, encoding, encryption, and executor crypt compatibility                                                            |
+| Diagnostics           |       13 | bridge/runtime health, capability matrices, bounded execution-footprint audit, memory/render stats, and anti-cheat context |
+| Disassembly & Xrefs   |       12 | disassembly, bytecode search, string/global/function/instance/remote references, and call graphs                           |
+| Drawing               |        5 | executor Drawing object creation, updates, listing, removal, and cleanup                                                   |
+| Execution             |       18 | Luau/script execution, batching, fanout, deferred work, profiling, watchdogs, and persistent VM control                    |
+| Filesystem            |       10 | executor filesystem reads/writes, directories, assets, and workspace checks                                                |
+| GUI                   |       10 | GUI discovery/manipulation, prompts, keyboard/mouse/touch/gamepad input, and camera control                                |
+| Inspection            |       15 | scripts, instances, trees, game metadata, properties, attributes, console output, and semantic inspection                  |
+| Instrumentation       |        8 | hook/log/count/profile/spoof/block functions, capture output, and watch properties                                         |
+| Intelligence          |        8 | bounded world perception, entity resolution, adaptive tasks, assertions, recovery, rollback, teaching, and deltas          |
+| Memory Scan           |       11 | bounded GC/value/key/range/string scans, path reads/writes, references, and value watches                                  |
+| Metatables & Closures |       36 | full Volt closure primitives, retained handles, inspect/patch/invoke closures, environments, metatables, and hooks         |
+| Network               |        9 | HTTP, WebSocket, RakNet packet, and network-runtime operations                                                             |
+| Remote Spy            |       10 | remote inventory/signatures, intercept/log/block/ignore, traffic tracing, monitoring, and callbacks                        |
+| Reverse Engineering   |       34 | GC and closure discovery, constants/upvalues/protos, hashes, bytecode, handlers, and reconstruction helpers                |
+| Semantic Search       |        3 | embedding-backed script search, indexing, and index status                                                                 |
+| Session & Client      |        8 | client discovery/selection, session isolation, player/local-player/place details, and fanout                               |
+| Signals & Connections |       16 | connection enumeration, signal fire/replication, signal arguments, internals, and replication whitelist                    |
+| Utility               |       15 | tool discovery/schema/planning, agent context/runtime/memory, playbooks, and general helpers                               |
+| Windows               |        2 | list Roblox windows and capture window screenshots                                                                         |
+| **Total**             |  **286** |                                                                                                                            |
 
 > Note on source layout: the legacy folders under `_legacy/src/tools/impl/` (e.g. `reflection/`, `advanced/`, `clients/`) do **not** map 1:1 to these 16 categories — the legacy `index.ts` groups registrations into categories via `setToolCategory(...)`. When migrating, assign the **category** from the table above, not from the legacy folder name.
 

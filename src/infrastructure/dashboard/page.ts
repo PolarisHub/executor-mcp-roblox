@@ -292,17 +292,17 @@ export function renderDashboardPage(): string {
   .btn[disabled] { opacity: .5; cursor: default; }
   .exp-toolbar .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-  .exp-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .exp-layout { display: grid; grid-template-columns: minmax(250px, .62fr) minmax(0, 1.9fr); gap: 14px; align-items: start; }
   .exp-col {
     border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden;
-    display: flex; flex-direction: column; min-height: 320px;
+    display: flex; flex-direction: column; min-height: 320px; height: 68vh;
   }
   .exp-col .col-head {
     padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--faint);
     font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
     display: flex; align-items: center; gap: 8px;
   }
-  .exp-tree { overflow: auto; max-height: 64vh; padding: 4px 0; }
+  .exp-tree { overflow: auto; min-height: 0; flex: 1; padding: 4px 0; }
 
   .tnode { user-select: none; }
   .trow {
@@ -339,7 +339,7 @@ export function renderDashboardPage(): string {
   .tnode-more.busy { color: var(--faint); cursor: default; }
 
   /* details */
-  .exp-details { overflow: auto; max-height: 64vh; }
+  .exp-details { overflow: auto; min-height: 0; flex: 1; }
   .det-head { padding: 12px; border-bottom: 1px solid var(--border); }
   .det-head .nm { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .det-head .cls { color: var(--dim); font-family: var(--mono); font-size: 12px; margin-top: 4px; }
@@ -354,6 +354,107 @@ export function renderDashboardPage(): string {
   .subtabs button .c { margin-left: 6px; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
   .subpanel { display: none; padding: 4px 0; }
   .subpanel.active { display: block; }
+
+  /* script workspace */
+  .exp-work-col { min-width: 0; }
+  .exp-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; }
+  .exp-work-tabs {
+    display: flex; align-items: stretch; gap: 1px; min-height: 38px; overflow-x: auto;
+    border-bottom: 1px solid var(--border); background: #181818; scrollbar-width: thin;
+  }
+  .exp-work-tab {
+    appearance: none; border: 0; border-right: 1px solid #242424; background: transparent; color: var(--dim);
+    font: 11.5px var(--mono); padding: 0 9px; min-width: 0; max-width: 210px; flex: none;
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap;
+  }
+  .exp-work-tab:hover { color: var(--text); background: var(--hover); }
+  .exp-work-tab.active { color: var(--text); background: var(--panel); box-shadow: inset 0 -2px 0 var(--accent); }
+  .exp-work-tab .tab-name { overflow: hidden; text-overflow: ellipsis; }
+  .exp-work-tab .tab-state { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+  .exp-work-tab .tab-state.err { background: var(--err); }
+  .exp-work-tab .tab-close {
+    display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px;
+    color: var(--faint); font: 15px/1 sans-serif; margin-left: 2px;
+  }
+  .exp-work-tab .tab-close:hover { color: var(--text); background: #343434; }
+  .script-shell { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; }
+  .script-head {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-bottom: 1px solid var(--border);
+    background: rgba(29,29,29,.86); min-width: 0;
+  }
+  .script-head .identity { min-width: 0; flex: 1; }
+  .script-head .name { color: var(--text); font-size: 12px; font-weight: 600; }
+  .script-head .origin { color: var(--faint); font: 10.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .script-stats { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .script-stat {
+    color: var(--dim); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 6px; font: 10px var(--mono); white-space: nowrap;
+  }
+  .script-stat.warn { color: var(--warn); border-color: rgba(231,180,85,.25); }
+  .script-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-width: 0; min-height: 0; flex: 1; }
+  .script-code-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border); }
+  .script-pane-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px;
+    border-bottom: 1px solid #232323; color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  }
+  .script-pane-head .meta { text-transform: none; letter-spacing: 0; font: 10px var(--mono); }
+  .script-code {
+    flex: 1; min-height: 0; overflow: auto; background: #111113; font: 12px/1.55 var(--mono);
+    tab-size: 2; scrollbar-width: thin;
+  }
+  .code-line { display: grid; grid-template-columns: 54px max-content; min-width: 100%; width: max-content; min-height: 19px; }
+  .code-line:hover { background: rgba(255,255,255,.025); }
+  .code-line.target { background: rgba(107,155,255,.13); box-shadow: inset 2px 0 0 var(--accent); }
+  .code-ln {
+    position: sticky; left: 0; z-index: 1; padding: 0 10px 0 5px; color: #54545c; text-align: right;
+    user-select: none; border-right: 1px solid #202024; background: #111113; font-variant-numeric: tabular-nums;
+  }
+  .code-line:hover .code-ln, .code-line.target .code-ln { color: var(--dim); background: #16161a; }
+  .code-text { padding: 0 12px; color: #cdd1d7; white-space: pre; }
+  .script-functions { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #171719; }
+  .fn-tree { min-height: 120px; max-height: 48%; overflow: auto; padding: 4px 0; border-bottom: 1px solid var(--border); scrollbar-width: thin; }
+  .fn-row {
+    display: flex; align-items: center; gap: 5px; min-height: 31px; padding: 3px 6px 3px 0;
+    color: var(--dim); cursor: pointer; border-left: 2px solid transparent; position: relative; user-select: none;
+  }
+  .fn-row:hover { color: var(--text); background: var(--hover); }
+  .fn-row.selected { color: var(--text); background: var(--panel-2); border-left-color: var(--accent); }
+  .fn-toggle { width: 15px; height: 15px; display: inline-grid; place-items: center; color: var(--faint); flex: none; }
+  .fn-toggle svg { width: 9px; height: 9px; transition: transform .12s ease; transform: rotate(90deg); }
+  .fn-toggle.collapsed svg { transform: rotate(0); }
+  .fn-glyph { color: #a9bce8; font: 10px var(--mono); flex: none; }
+  .fn-label { min-width: 0; flex: 1; }
+  .fn-label .fn-name { display: block; color: inherit; font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fn-label .fn-meta { display: block; margin-top: 1px; color: var(--faint); font: 9.5px var(--mono); }
+  .fn-find {
+    appearance: none; border: 1px solid transparent; background: transparent; color: var(--faint); border-radius: 4px;
+    padding: 3px 5px; font: 9.5px var(--mono); cursor: pointer; opacity: 0; white-space: nowrap;
+  }
+  .fn-row:hover .fn-find, .fn-row.selected .fn-find { opacity: 1; }
+  .fn-find:hover { color: var(--accent); border-color: rgba(107,155,255,.3); background: rgba(107,155,255,.06); }
+  .fn-inspect { min-height: 0; overflow: auto; flex: 1; padding: 10px; scrollbar-width: thin; }
+  .fn-card-title { display: flex; align-items: center; gap: 7px; color: var(--text); font: 11.5px var(--mono); }
+  .fn-card-title .line { margin-left: auto; color: var(--accent); cursor: pointer; }
+  .fn-origin { margin-top: 7px; color: var(--faint); font: 10px/1.45 var(--mono); word-break: break-word; }
+  .fn-metrics { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .fn-section { margin-top: 12px; }
+  .fn-section-label { color: var(--faint); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 5px; }
+  .fn-ref {
+    display: block; width: 100%; text-align: left; appearance: none; border: 0; border-radius: 5px;
+    background: transparent; color: var(--dim); padding: 5px 6px; cursor: default; font: 10px/1.35 var(--mono);
+  }
+  .fn-ref.openable { cursor: pointer; }
+  .fn-ref.openable:hover { color: var(--text); background: var(--hover); }
+  .fn-ref .where { display: block; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fn-ref-empty { color: var(--faint); font-size: 10.5px; line-height: 1.45; }
+  .fn-action {
+    appearance: none; width: 100%; margin-top: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid rgba(107,155,255,.25); background: rgba(107,155,255,.06); color: var(--accent); font: 10.5px var(--mono);
+  }
+  .fn-action:hover { background: rgba(107,155,255,.11); color: var(--text); }
+  .fn-action[disabled] { opacity: .55; cursor: default; }
+  .script-notice { margin: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  .script-notice.warn { color: var(--warn); border-color: rgba(231,180,85,.25); background: rgba(231,180,85,.04); }
 
   .ptable { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .ptable td { padding: 5px 12px; border-bottom: 1px solid #1f1f1f; vertical-align: top; word-break: break-word; }
@@ -703,9 +804,18 @@ export function renderDashboardPage(): string {
   @keyframes scene-live-blink { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .scene-particle, .scene-live i { animation: none; } }
 
+  @media (max-width: 1100px) {
+    .script-grid { grid-template-columns: minmax(0, 1fr) 270px; }
+  }
   @media (max-width: 720px) {
     .tools-layout { grid-template-columns: 1fr; }
     .exp-layout { grid-template-columns: 1fr; }
+    .exp-col { height: auto; max-height: none; }
+    .exp-tree { max-height: 42vh; min-height: 260px; }
+    .exp-work-col { height: 72vh; }
+    .script-grid { grid-template-columns: 1fr; }
+    .script-code-pane { border-right: 0; border-bottom: 1px solid var(--border); min-height: 42vh; }
+    .script-functions { min-height: 280px; }
     .strip { overflow-x: auto; }
     .intel-overview { grid-template-columns: 1fr; align-items: start; }
     .intel-states { justify-content: flex-start; }
@@ -957,6 +1067,8 @@ return p"></textarea>
     connections: null,  // last connections payload
     propsLoading: false, propsErr: null,
     connLoading: false, connErr: null,
+    scriptTabs: [],      // open decompile tabs for the selected client
+    activeScriptKey: null,
   };
   var SVG_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 
@@ -1470,6 +1582,8 @@ return p"></textarea>
     exp.properties = null; exp.connections = null;
     exp.propsErr = null; exp.connErr = null;
     exp.detTab = "properties";
+    exp.scriptTabs = [];
+    exp.activeScriptKey = null;
     switchTab("explorer");
     loadChildren("game");
     loadDetails("game", "game");
@@ -1541,13 +1655,14 @@ return p"></textarea>
 
   function loadDetails(path, name) {
     exp.selPath = path; exp.selName = name;
+    exp.activeScriptKey = null;
     exp.detPath = path;
     exp.properties = null; exp.connections = null;
     exp.propsErr = null; exp.connErr = null;
     exp.propsLoading = true; exp.connLoading = false;
     var clientAtFetch = exp.clientId;
     renderTree();    // reflect the new selection highlight without rebuilding the shell
-    renderDetails(); // show loading state in the details panel
+    renderWorkspace(); // show loading state in the inspector workspace
 
     fetch("/api/explore/properties?" + expQuery(path))
       .then(function (r) { return r.json(); })
@@ -1589,7 +1704,9 @@ return p"></textarea>
     var cc = node.childCount ? '<span class="cc">' + node.childCount + "</span>" : "";
     var row = '<div class="trow' + (isOpen ? " open" : "") + (isSel ? " sel" : "") +
       '" data-path="' + esc(path) + '" data-name="' + esc(node.name) +
-      '" style="padding-left:' + pad + 'px">' +
+      '" data-class="' + esc(node.class) + '"' +
+      ((node.class === "LocalScript" || node.class === "ModuleScript" || node.class === "Script") ? ' title="Double-click to decompile"' : "") +
+      ' style="padding-left:' + pad + 'px">' +
       chev + classSquare(node.class) +
       '<span class="nm">' + esc(node.name) + "</span>" +
       '<span class="cls">' + esc(node.class) + "</span>" + cc + "</div>";
@@ -1693,6 +1810,381 @@ return p"></textarea>
     return out.join("");
   }
 
+  function isScriptClass(cls) {
+    return cls === "LocalScript" || cls === "ModuleScript" || cls === "Script";
+  }
+  function scriptTabByKey(key) {
+    for (var i = 0; i < exp.scriptTabs.length; i++) {
+      if (exp.scriptTabs[i].key === key) return exp.scriptTabs[i];
+    }
+    return null;
+  }
+  function scriptTabIndex(key) {
+    for (var i = 0; i < exp.scriptTabs.length; i++) if (exp.scriptTabs[i].key === key) return i;
+    return -1;
+  }
+  function fetchScriptTab(tab) {
+    var clientAtFetch = exp.clientId;
+    tab.loading = true;
+    tab.error = null;
+    tab.data = null;
+    tab.references = {};
+    tab.refLoading = {};
+    tab.refErrors = {};
+    renderWorkspace();
+    fetch("/api/explore/script?" + expQuery(tab.path))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (clientAtFetch !== exp.clientId || !scriptTabByKey(tab.key)) return;
+        tab.loading = false;
+        if (data && data.error) tab.error = data.error;
+        else {
+          tab.data = data;
+          var nodes = data && data.functions && data.functions.nodes;
+          tab.selectedFunctionId = nodes && nodes.length ? nodes[0].id : null;
+        }
+        if (exp.activeScriptKey === tab.key) {
+          renderWorkspace();
+          if (tab.pendingLine) scheduleScriptLine(tab, tab.pendingLine);
+        }
+      })
+      .catch(function () {
+        if (clientAtFetch !== exp.clientId || !scriptTabByKey(tab.key)) return;
+        tab.loading = false;
+        tab.error = "Request failed while decompiling this script.";
+        if (exp.activeScriptKey === tab.key) renderWorkspace();
+      });
+  }
+  function openScript(path, name, cls, line) {
+    if (!path) return;
+    var tab = scriptTabByKey(path);
+    if (!tab) {
+      tab = {
+        key: path,
+        path: path,
+        name: name || "Script",
+        className: cls || "LuaSourceContainer",
+        loading: false,
+        error: null,
+        data: null,
+        selectedFunctionId: "root",
+        collapsed: {},
+        references: {},
+        refLoading: {},
+        refErrors: {},
+        pendingLine: line || null,
+      };
+      exp.scriptTabs.push(tab);
+      exp.activeScriptKey = tab.key;
+      fetchScriptTab(tab);
+      return;
+    }
+    if (name) tab.name = name;
+    if (cls) tab.className = cls;
+    exp.activeScriptKey = tab.key;
+    renderWorkspace();
+    if (line) scheduleScriptLine(tab, line);
+  }
+  function closeScriptTab(key) {
+    var index = scriptTabIndex(key);
+    if (index < 0) return;
+    exp.scriptTabs.splice(index, 1);
+    if (exp.activeScriptKey === key) {
+      var next = exp.scriptTabs[index] || exp.scriptTabs[index - 1];
+      exp.activeScriptKey = next ? next.key : null;
+    }
+    renderWorkspace();
+  }
+  function scheduleScriptLine(tab, line) {
+    var requested = Math.max(1, Math.floor(Number(line) || 1));
+    tab.pendingLine = requested;
+    setTimeout(function () {
+      if (exp.activeScriptKey !== tab.key || !tab.data) return;
+      var code = byId("script-code");
+      if (!code) return;
+      var maxLine = Number(tab.data.returnedLineCount) || 1;
+      var targetLine = Math.min(requested, maxLine);
+      var target = code.querySelector('[data-line="' + targetLine + '"]');
+      if (!target) return;
+      var old = code.querySelector(".code-line.target");
+      if (old) old.classList.remove("target");
+      target.classList.add("target");
+      target.scrollIntoView({ block: "center", inline: "nearest" });
+      tab.pendingLine = null;
+    }, 0);
+  }
+  function loadFunctionReferences(tab, functionId) {
+    if (!tab || !functionId || tab.refLoading[functionId]) return;
+    tab.selectedFunctionId = functionId;
+    tab.refLoading[functionId] = true;
+    delete tab.refErrors[functionId];
+    refreshFunctionPanel(tab);
+    var clientAtFetch = exp.clientId;
+    var url = "/api/explore/references?" + expQuery(tab.path) +
+      "&function=" + encodeURIComponent(functionId) + "&maxScanned=3500";
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (clientAtFetch !== exp.clientId || !scriptTabByKey(tab.key)) return;
+        tab.refLoading[functionId] = false;
+        if (data && data.error) tab.refErrors[functionId] = data.error;
+        else tab.references[functionId] = data;
+        if (exp.activeScriptKey === tab.key) refreshFunctionPanel(tab);
+      })
+      .catch(function () {
+        if (clientAtFetch !== exp.clientId || !scriptTabByKey(tab.key)) return;
+        tab.refLoading[functionId] = false;
+        tab.refErrors[functionId] = "Reference scan request failed.";
+        if (exp.activeScriptKey === tab.key) refreshFunctionPanel(tab);
+      });
+  }
+
+  function renderWorkspaceTabs() {
+    var out = ['<button class="exp-work-tab' + (!exp.activeScriptKey ? " active" : "") +
+      '" data-work="inspector"><span class="tab-name">Inspector</span></button>'];
+    for (var i = 0; i < exp.scriptTabs.length; i++) {
+      var tab = exp.scriptTabs[i];
+      var stateDot = tab.loading ? '<span class="tab-state"></span>' :
+        (tab.error ? '<span class="tab-state err"></span>' : "");
+      out.push('<button class="exp-work-tab' + (exp.activeScriptKey === tab.key ? " active" : "") +
+        '" data-work="script" data-key="' + esc(tab.key) + '" title="' + esc(tab.path) + '">' +
+        stateDot + classSquare(tab.className) + '<span class="tab-name">' + esc(tab.name) + '</span>' +
+        '<span class="tab-close" data-act="close-tab" title="Close">&times;</span></button>');
+    }
+    return '<div class="exp-work-tabs" role="tablist" aria-label="Explorer workspace tabs">' + out.join("") + "</div>";
+  }
+  function functionDisplayName(node) {
+    if (!node) return "function";
+    if (node.id === "root") return "<script>";
+    return node.name || ("proto " + node.protoIndex);
+  }
+  function functionNodeMap(nodes) {
+    var map = {};
+    for (var i = 0; i < nodes.length; i++) map[nodes[i].id] = nodes[i];
+    return map;
+  }
+  function functionNodeHidden(tab, node, map) {
+    var parentId = node.parentId;
+    while (parentId) {
+      if (tab.collapsed[parentId]) return true;
+      var parent = map[parentId];
+      if (!parent) break;
+      parentId = parent.parentId;
+    }
+    return false;
+  }
+  function renderFunctionRows(tab, nodes) {
+    if (!nodes.length) return '<div class="script-notice">No proto metadata was returned.</div>';
+    var map = functionNodeMap(nodes);
+    var out = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (functionNodeHidden(tab, node, map)) continue;
+      var selected = tab.selectedFunctionId === node.id;
+      var hasChildren = Number(node.directProtoCount) > 0;
+      var toggle = hasChildren
+        ? '<span class="fn-toggle' + (tab.collapsed[node.id] ? " collapsed" : "") +
+          '" data-act="toggle-function">' + SVG_CHEV + "</span>"
+        : '<span class="fn-toggle"></span>';
+      var line = Number(node.displayLine) || Number(node.lineDefined) || 1;
+      var origin = node.originFullName || node.source || "Unknown source";
+      out.push('<div class="fn-row' + (selected ? " selected" : "") + '" data-function="' + esc(node.id) +
+        '" data-line="' + line + '" title="' + esc(origin + ":" + (node.lineDefined || "?")) +
+        '" style="padding-left:' + (5 + Number(node.depth || 0) * 14) + 'px">' + toggle +
+        '<span class="fn-glyph">fn</span><span class="fn-label"><span class="fn-name">' +
+        esc(functionDisplayName(node)) + '</span><span class="fn-meta">L' + line + "  P" +
+        Number(node.directProtoCount || 0) + "  C" + Number(node.constantCount || 0) + "  U" +
+        Number(node.upvalueCount || 0) + '</span></span><button class="fn-find" data-act="find-references">Find refs</button></div>');
+    }
+    return out.join("");
+  }
+  function renderReferenceButton(ref, label) {
+    var path = ref && ref.originExpression;
+    var line = Number(ref && ref.lineDefined) || 1;
+    var name = (ref && (ref.name || ref.originName)) || label || "function";
+    var where = (ref && (ref.originFullName || ref.source)) || "Source could not be resolved";
+    return '<button class="fn-ref' + (path ? " openable" : "") + '"' +
+      (path ? ' data-act="open-reference" data-path="' + esc(path) + '" data-name="' +
+        esc((ref && ref.originName) || name) + '" data-class="' + esc((ref && ref.originClass) || "LuaSourceContainer") +
+        '" data-line="' + line + '"' : "") + '><span>' + esc(name) + '</span><span class="where">' +
+      esc(where + (line > 0 ? ":" + line : "")) + "</span></button>";
+  }
+  function renderFunctionInspector(tab, nodes, capabilities) {
+    var map = functionNodeMap(nodes);
+    var node = map[tab.selectedFunctionId] || nodes[0];
+    if (!node) return '<div class="fn-ref-empty">Select a function to inspect it.</div>';
+    tab.selectedFunctionId = node.id;
+    var line = Number(node.displayLine) || Number(node.lineDefined) || 1;
+    var origin = node.originFullName || node.source || "Unknown runtime source";
+    var out = ['<div class="fn-card-title"><span>fn</span><span>' + esc(functionDisplayName(node)) +
+      '</span><span class="line" data-act="jump-line" data-line="' + line + '">line ' + line + "</span></div>",
+      '<div class="fn-origin">Originally from ' + esc(origin) +
+      (Number(node.lineDefined) >= 0 ? ":" + Number(node.lineDefined) : "") + "</div>",
+      '<div class="fn-metrics"><span class="script-stat">' + Number(node.descendantProtoCount || 0) +
+      ' nested protos</span><span class="script-stat">' + Number(node.constantCount || 0) +
+      ' constants</span><span class="script-stat">' + Number(node.upvalueCount || 0) +
+      ' upvalues</span><span class="script-stat">' + (Number(node.numParams) >= 0 ? Number(node.numParams) : "?") +
+      ' params' + (node.isVararg ? " + vararg" : "") + "</span></div>"];
+
+    var constants = node.constantsPreview || [];
+    if (constants.length) {
+      out.push('<div class="fn-section"><div class="fn-section-label">Constant preview</div>');
+      for (var i = 0; i < constants.length; i++) {
+        out.push('<div class="fn-ref"><span>' + esc(constants[i].value) + '</span><span class="where">' +
+          esc(constants[i].type) + "</span></div>");
+      }
+      out.push("</div>");
+    }
+
+    var uses = node.functionRefs || [];
+    out.push('<div class="fn-section"><div class="fn-section-label">Function upvalue references</div>');
+    if (!uses.length) out.push('<div class="fn-ref-empty">No function-valued upvalues were exposed.</div>');
+    for (var j = 0; j < uses.length; j++) out.push(renderReferenceButton(uses[j], "upvalue " + uses[j].slot));
+    out.push("</div>");
+
+    out.push('<div class="fn-section"><div class="fn-section-label">Incoming references</div>');
+    if (tab.refLoading[node.id]) {
+      out.push('<div class="fn-ref-empty"><span class="spin"></span> Scanning bounded GC functions...</div>');
+    } else if (tab.refErrors[node.id]) {
+      out.push('<div class="fn-ref-empty">' + esc(tab.refErrors[node.id]) + "</div>");
+    } else if (tab.references[node.id]) {
+      var result = tab.references[node.id];
+      var refs = result.references || [];
+      if (!refs.length) out.push('<div class="fn-ref-empty">No incoming proto or upvalue references found.</div>');
+      for (var k = 0; k < refs.length; k++) {
+        out.push(renderReferenceButton(refs[k], refs[k].relation + " " + refs[k].slot));
+      }
+      out.push('<div class="fn-ref-empty">Scanned ' + Number(result.scannedFunctions || 0) + " functions" +
+        (result.truncated ? (result.timedOut ? " within the time budget." : " up to the scan limit.") : ".") + "</div>");
+    } else {
+      out.push('<div class="fn-ref-empty">Scan only when needed; it yields periodically and stops at a hard budget.</div>');
+    }
+    out.push('<button class="fn-action" data-act="find-references"' +
+      ((!capabilities.references || tab.refLoading[node.id]) ? " disabled" : "") + ">" +
+      (tab.refLoading[node.id] ? "Scanning..." : (tab.references[node.id] ? "Scan again" : "Find references")) + "</button></div>");
+    return out.join("");
+  }
+  function renderFunctionPanel(tab, data) {
+    var functions = data.functions || {};
+    var nodes = functions.nodes || [];
+    return '<div class="script-pane-head"><span>Function tree</span><span class="meta">' +
+      Number(functions.totalFunctions || 0) + ' functions</span></div><div class="fn-tree">' +
+      renderFunctionRows(tab, nodes) + '</div><div class="fn-inspect">' +
+      renderFunctionInspector(tab, nodes, data.capabilities || {}) + "</div>";
+  }
+  function refreshFunctionPanel(tab) {
+    if (!tab || !tab.data || exp.activeScriptKey !== tab.key) return;
+    var panel = byId("script-functions");
+    if (panel) panel.innerHTML = renderFunctionPanel(tab, tab.data);
+  }
+  function renderScriptTab(tab) {
+    if (tab.loading) return '<div class="loading"><span class="spin"></span>Decompiling source and mapping protos...</div>';
+    if (tab.error) return '<div class="empty"><div class="h">Could not open script</div><div class="s err-msg">' +
+      esc(tab.error) + '</div><button class="btn" data-act="retry-script">Retry</button></div>';
+    var data = tab.data;
+    if (!data) return '<div class="empty"><div class="s">No script data.</div></div>';
+    var script = data.script || {};
+    var functions = data.functions || {};
+    var stats = '<span class="script-stat">' + Number(functions.protoCount || 0) + ' protos</span>' +
+      '<span class="script-stat">' + Number(functions.totalConstants || 0) + ' constants</span>' +
+      '<span class="script-stat">' + Number(functions.totalUpvalues || 0) + ' upvalues</span>' +
+      (data.sourceTruncated ? '<span class="script-stat warn">source bounded</span>' : "") +
+      (functions.truncated ? '<span class="script-stat warn">tree bounded</span>' : "");
+    var notices = "";
+    if (data.sourceError) notices += '<div class="script-notice warn">' + esc(data.sourceError) + "</div>";
+    if (functions.error) notices += '<div class="script-notice warn">Function metadata: ' + esc(functions.error) + "</div>";
+
+    var source = typeof data.source === "string" ? data.source : "";
+    var lines = source ? source.split("\\n") : [];
+    var codeRows = [];
+    for (var i = 0; i < lines.length; i++) {
+      var text = lines[i];
+      if (text.length && text.charAt(text.length - 1) === "\\r") text = text.slice(0, -1);
+      codeRows.push('<div class="code-line" data-line="' + (i + 1) + '"><span class="code-ln">' +
+        (i + 1) + '</span><span class="code-text">' + (text ? esc(text) : " ") + "</span></div>");
+    }
+    var code = codeRows.length ? codeRows.join("") : '<div class="script-notice">No decompiled source was returned.</div>';
+    var lineMeta = Number(data.returnedLineCount || 0) + " / " + Number(data.sourceLineCount || 0) + " lines";
+    return '<div class="script-shell"><div class="script-head"><div class="identity"><div class="name">' +
+      classSquare(script.class || tab.className) + " " + esc(script.name || tab.name) +
+      '</div><div class="origin">' + esc(script.fullName || tab.path) + '</div></div><div class="script-stats">' +
+      stats + '</div></div>' + notices + '<div class="script-grid"><div class="script-code-pane">' +
+      '<div class="script-pane-head"><span>Decompiled source</span><span class="meta">' + lineMeta +
+      '</span></div><div class="script-code" id="script-code">' + code +
+      '</div></div><aside class="script-functions" id="script-functions">' + renderFunctionPanel(tab, data) +
+      "</aside></div></div>";
+  }
+  function renderWorkspace() {
+    var host = byId("exp-workspace");
+    if (!host) return;
+    var body;
+    var tab = exp.activeScriptKey && scriptTabByKey(exp.activeScriptKey);
+    if (tab) body = renderScriptTab(tab);
+    else body = '<div class="exp-details" id="exp-det-body"></div>';
+    host.innerHTML = renderWorkspaceTabs() + body;
+    if (!tab) renderDetails();
+    wireWorkspace();
+  }
+  function wireWorkspace() {
+    var host = byId("exp-workspace");
+    if (!host) return;
+    host.onclick = function (e) {
+      var close = e.target.closest('[data-act="close-tab"]');
+      if (close) {
+        e.stopPropagation();
+        var closeTab = close.closest(".exp-work-tab");
+        if (closeTab) closeScriptTab(closeTab.getAttribute("data-key"));
+        return;
+      }
+      var workTab = e.target.closest(".exp-work-tab");
+      if (workTab) {
+        exp.activeScriptKey = workTab.getAttribute("data-work") === "script" ? workTab.getAttribute("data-key") : null;
+        renderWorkspace();
+        return;
+      }
+      var sub = e.target.closest(".subtabs button");
+      if (sub) { exp.detTab = sub.getAttribute("data-sub"); renderDetails(); return; }
+      var sig = e.target.closest(".csig-head");
+      if (sig) { sig.parentNode.classList.toggle("open"); return; }
+
+      var active = exp.activeScriptKey && scriptTabByKey(exp.activeScriptKey);
+      if (!active) return;
+      var action = e.target.closest("[data-act]");
+      var row = e.target.closest(".fn-row");
+      if (action && action.getAttribute("data-act") === "toggle-function") {
+        if (!row) return;
+        var toggleId = row.getAttribute("data-function");
+        if (active.collapsed[toggleId]) delete active.collapsed[toggleId]; else active.collapsed[toggleId] = true;
+        refreshFunctionPanel(active);
+        return;
+      }
+      if (action && action.getAttribute("data-act") === "find-references") {
+        var functionId = row ? row.getAttribute("data-function") : active.selectedFunctionId;
+        loadFunctionReferences(active, functionId);
+        return;
+      }
+      if (action && action.getAttribute("data-act") === "jump-line") {
+        scheduleScriptLine(active, action.getAttribute("data-line"));
+        return;
+      }
+      if (action && action.getAttribute("data-act") === "open-reference") {
+        openScript(action.getAttribute("data-path"), action.getAttribute("data-name"),
+          action.getAttribute("data-class"), action.getAttribute("data-line"));
+        return;
+      }
+      if (action && action.getAttribute("data-act") === "retry-script") {
+        fetchScriptTab(active);
+        return;
+      }
+      if (row) {
+        active.selectedFunctionId = row.getAttribute("data-function");
+        var rowLine = row.getAttribute("data-line");
+        refreshFunctionPanel(active);
+        scheduleScriptLine(active, rowLine);
+      }
+    };
+  }
+
   function renderDetails() {
     var host = byId("exp-det-body");
     if (!host) return;
@@ -1751,15 +2243,16 @@ return p"></textarea>
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Refresh</button></span>' +
       "</div>" +
       '<div class="exp-layout">' +
-        '<div class="exp-col"><div class="col-head">Tree</div><div class="exp-tree" id="exp-tree"></div></div>' +
-        '<div class="exp-col"><div class="col-head">Details</div><div class="exp-details" id="exp-det-body"></div></div>' +
+        '<div class="exp-col"><div class="col-head">Tree &middot; double-click scripts</div><div class="exp-tree" id="exp-tree"></div></div>' +
+        '<div class="exp-col exp-work-col"><div class="exp-workspace" id="exp-workspace"></div></div>' +
       "</div>";
 
     renderTree();
-    renderDetails();
+    renderWorkspace();
     wireExplorer();
   }
 
+  var treeSelectTimer = null;
   function wireExplorer() {
     var tree = byId("exp-tree");
     if (tree) {
@@ -1780,9 +2273,31 @@ return p"></textarea>
           renderTree();
           return;
         }
+        var selectRow = function () {
+          treeSelectTimer = null;
+          exp.crumb = crumbFor(path, name);
+          var c = byId("exp-crumb"); if (c) c.innerHTML = renderCrumb();
+          loadDetails(path, name);
+        };
+        if (isScriptClass(row.getAttribute("data-class"))) {
+          if (treeSelectTimer) clearTimeout(treeSelectTimer);
+          treeSelectTimer = setTimeout(selectRow, 180);
+        } else selectRow();
+      };
+      tree.ondblclick = function (e) {
+        if (e.target.closest('[data-act="toggle"]')) return;
+        var row = e.target.closest(".trow");
+        if (!row || !isScriptClass(row.getAttribute("data-class"))) return;
+        if (treeSelectTimer) { clearTimeout(treeSelectTimer); treeSelectTimer = null; }
+        var path = row.getAttribute("data-path");
+        var name = row.getAttribute("data-name");
+        var cls = row.getAttribute("data-class");
+        exp.selPath = path;
+        exp.selName = name;
         exp.crumb = crumbFor(path, name);
         var c = byId("exp-crumb"); if (c) c.innerHTML = renderCrumb();
-        loadDetails(path, name);
+        renderTree();
+        openScript(path, name, cls);
       };
       // Debounced prefetch of children when the cursor enters an unexpanded
       // expandable node — by the time you click, the data is already there.
@@ -1795,14 +2310,6 @@ return p"></textarea>
         if (path && !exp.expanded[path]) schedulePrefetch(path);
       };
     }
-
-    var det = byId("exp-det-body");
-    if (det) det.onclick = function (e) {
-      var sub = e.target.closest(".subtabs button");
-      if (sub) { exp.detTab = sub.getAttribute("data-sub"); renderDetails(); return; }
-      var sig = e.target.closest(".csig-head");
-      if (sig) { sig.parentNode.classList.toggle("open"); return; }
-    };
 
     var crumb = byId("exp-crumb");
     if (crumb) crumb.onclick = function (e) {
@@ -1821,7 +2328,8 @@ return p"></textarea>
       var p = exp.selPath || "game";
       delete exp.childCache[p];
       loadChildren(p);
-      loadDetails(p, exp.selName);
+      var active = exp.activeScriptKey && scriptTabByKey(exp.activeScriptKey);
+      if (active) fetchScriptTab(active); else loadDetails(p, exp.selName);
     };
   }
 

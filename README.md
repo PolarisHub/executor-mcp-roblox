@@ -2,11 +2,11 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **252 tools** across 22 categories, a dashboard with ten tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
+It ships **286 tools** across 22 categories, a dashboard with ten tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## What's in the box
 
-### Tools (252 across 22 categories)
+### Tools (286 across 22 categories)
 
 The big ones you'll reach for first:
 
@@ -16,6 +16,9 @@ The big ones you'll reach for first:
 - **Reverse engineering.** GC walking, closure constants/upvalues/protos, bytecode disassembly, call graphs, duplicate-function detection, `filtergc`. 34 tools.
 - **Remotes.** Inventory, signature inference, live spy, block, replay, raw RakNet capture. 10 tools.
 - **Instrumentation.** Hook-and-log, count calls, spoof returns, trace durations.
+- **Closures.** Complete Volt closure primitives: classify/hash/clone/wrap/invoke/hook/restore, retained function handles, stack visibility, environments, constants, upvalues, and protos.
+- **Execution-footprint audit.** One bounded read-only Luau report for virtual-input provenance, `getfenv`/global leaks, closure and hook identity, script/source exposure, executor fingerprints, evidence confidence, and truncation telemetry.
+- **Actors and Lua states.** Actor discovery/execution, full LuaStateProxy inspection/Execute/Event support, communication channels, parallel-context checks, and bounded actor/channel/state event monitors.
 - **Hidden surfaces.** Actor scripts, nil-parented instances, hidden GUIs, `gethui`, detached remotes.
 - **Discovery.** `discover-player-values` auto-ranks candidate money/score/XP paths from leaderstats / Player / ReplicatedStorage with a scored heuristic walk.
 - **Playbooks.** Save/list/run/delete named, parameterized Luau snippets persisted to `~/.executor-mcp/playbooks/`.
@@ -30,15 +33,18 @@ The big ones you'll reach for first:
 
 Run `list-tools` once connected for the full catalog, or `GET /api/tools/schema` for JSON schemas, or `GET /mcp.d.luau` for Luau type declarations any editor with a Luau LSP can consume.
 
+See [`docs/architecture/actors-closures.md`](docs/architecture/actors-closures.md) for the capability-first Actor, LuaStateProxy, channel, event-monitor, and closure workflows.
+See [`docs/architecture/execution-footprint-audit.md`](docs/architecture/execution-footprint-audit.md) for the target-resolution, evidence, scoring, privacy, and performance contracts of the footprint auditor.
+
 ### Dashboard
 
 Open `http://localhost:16384/` once the server's running. Ten tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
-- **Tools** — category-grouped browser of all 252 tools with search.
+- **Tools** — category-grouped browser of all 286 tools with search.
 - **Activity** — live tool-call stream with text/category/outcome filters.
 - **Intelligence** — bounded live perceive→resolve→act→verify/recover timeline with targets, confidence, evidence, rollback, and teaching state.
-- **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch.
+- **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch, double-click decompile tabs, a bounded proto/function tree, origin/upvalue metadata, exact line jumps, and cross-script reference navigation.
 - **Brief** — Place/Game/JobId metadata, surface counts (RemoteEvent/Script/Tool), Local Player info, top remotes from the spy buffer, Discover Values button, Fanout-across-all-clients starter.
 - **Spy** — paginated table of captured remote calls with copy-as-`mcp.fire` snippets and a filter.
 - **Playbooks** — list rail + edit pane + parameter form + Run on selected client + Auto-params button that infers `${param}` from string/number literals.

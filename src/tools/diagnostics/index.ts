@@ -3,6 +3,7 @@ import getExecutorInfo from "./get-executor-info.js";
 import getGameInfo from "./get-game-info.js";
 import testCapabilities from "./test-capabilities.js";
 import getAnticheatSurfaces from "./get-anticheat-surfaces.js";
+import executionFootprintAudit from "./execution-footprint-audit.js";
 import getInstanceCounts from "./get-instance-counts.js";
 import getMemoryStats from "./get-memory-stats.js";
 import getRenderStats from "./get-render-stats.js";
@@ -18,6 +19,7 @@ export const diagnosticsTools: Tool[] = [
   getGameInfo,
   testCapabilities,
   getAnticheatSurfaces,
+  executionFootprintAudit,
   getInstanceCounts,
   getMemoryStats,
   getRenderStats,

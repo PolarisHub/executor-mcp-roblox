@@ -69,7 +69,9 @@ const ALIAS_GROUPS: readonly string[][] = [
   ["money", "cash", "coins", "currency", "score", "xp", "value", "stats"],
   ["hook", "trace", "monitor", "log", "spy", "connection", "signal"],
   ["memory", "gc", "garbage", "closure", "upvalue", "constant"],
+  ["actor", "parallel", "luastate", "state", "channel", "thread"],
   ["performance", "fps", "latency", "lag", "render", "diagnostic", "health"],
+  ["detect", "detected", "detection", "footprint", "exposure", "leak", "fingerprint", "provenance"],
   ["set", "change", "write", "edit", "modify", "update", "create", "destroy"],
   ["observe", "perceive", "scan", "world", "scene", "nearby", "visible"],
   ["verify", "assert", "prove", "confirm", "validate"],
@@ -323,6 +325,89 @@ const WORKFLOWS: readonly (WorkflowMatch & { readonly patterns: readonly RegExp[
         tool: "fire-remote",
         phase: "act",
         why: "Invoke the selected remote only after the target and arguments are understood.",
+      },
+    ],
+  },
+  {
+    id: "audit-execution-footprint",
+    title: "Audit a script or closure for runtime detection exposure",
+    description:
+      "Run one bounded read-only Luau audit for virtual-input provenance, environment leaks, closure identity, hooks, and executor fingerprints, then optionally compare ambient anti-cheat surfaces.",
+    patterns: [
+      /\b(script detected|detection risk|execution footprint|executor fingerprint|environment leak|getfenv leak|virtual input provenance|input provenance|closure exposure)\b/i,
+    ],
+    steps: [
+      {
+        tool: "execution-footprint-audit",
+        phase: "discover",
+        why: "Collect bounded target-specific evidence and distinguish confirmed exposure from heuristic risk.",
+      },
+      {
+        tool: "get-anticheat-surfaces",
+        phase: "verify",
+        why: "Cross-check lightweight ambient watcher surfaces without executing or concealing anything.",
+      },
+    ],
+  },
+  {
+    id: "inspect-actor-state",
+    title: "Inspect or execute an Actor Lua state",
+    description:
+      "Probe Actor/state support, identify the target state, inspect its actors, then execute or monitor only when requested.",
+    patterns: [
+      /\b(actor|actors|parallel|lua ?state|luastate|state proxy|comm(?:unication)? channel)\b/i,
+    ],
+    steps: [
+      {
+        tool: "actor-capabilities",
+        phase: "discover",
+        why: "Confirm which Actor, LuaStateProxy, channel, and event primitives exist.",
+      },
+      {
+        tool: "list-actors",
+        phase: "discover",
+        why: "Inventory Actor targets before resolving a state or scheduling code.",
+      },
+      {
+        tool: "list-lua-states",
+        phase: "discover",
+        why: "Map active state IDs to their associated Actors.",
+      },
+      {
+        tool: "get-lua-state",
+        phase: "verify",
+        why: "Resolve and verify the exact Actor/script state before acting.",
+      },
+      {
+        tool: "run-on-actor",
+        phase: "act",
+        why: "Schedule confirmed code on the selected Actor state.",
+      },
+    ],
+  },
+  {
+    id: "inspect-closure",
+    title: "Inspect, classify, or manipulate a closure",
+    description:
+      "Probe closure support, inspect metadata and pools, then clone/hook/restore only through explicit confirmed operations.",
+    patterns: [
+      /\b(closure|upvalue|proto|constant pool|function hash|newcclosure|hooked function)\b/i,
+    ],
+    steps: [
+      {
+        tool: "closure-capabilities",
+        phase: "discover",
+        why: "Confirm exact closure primitives and executor aliases before choosing an operation.",
+      },
+      {
+        tool: "inspect-closure",
+        phase: "discover",
+        why: "Read type, source, constants, upvalues, protos, and hash in one bounded call.",
+      },
+      {
+        tool: "is-function-hooked",
+        phase: "verify",
+        why: "Check hook state before installing or restoring a function hook.",
       },
     ],
   },

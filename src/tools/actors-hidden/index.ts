@@ -9,8 +9,9 @@ import summarizeHiddenSurfaces from "./summarize-hidden-surfaces.js";
 import findHiddenRemotes from "./find-hidden-remotes.js";
 import getActorDetails from "./get-actor-details.js";
 import findDetachedInstances from "./find-detached-instances.js";
+import { actorStateTools } from "./actor-state.js";
 
-/** Every Actors & Hidden tool — read-only discovery of things that hide off the game tree. */
+/** Every Actors & Hidden tool, from read-only discovery through confirmed Actor/state operations. */
 export const actorsHiddenTools: Tool[] = [
   findHiddenScripts,
   listActors,
@@ -22,4 +23,5 @@ export const actorsHiddenTools: Tool[] = [
   findHiddenRemotes,
   getActorDetails,
   findDetachedInstances,
+  ...actorStateTools,
 ];

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { matchWorkflows } from "../../../src/application/services/tool-discovery.js";
 import type { RobloxClient } from "../../../src/domain/client/client.js";
 import type { SelectionResolution } from "../../../src/domain/client/selection.js";
 import type { LuauOptions, ToolContext } from "../../../src/application/tool/tool.js";
@@ -76,8 +77,20 @@ function mockContext(
 }
 
 describe("Diagnostics tools", () => {
-  it("registers all 12 tools in the category index, each tagged Diagnostics", () => {
-    expect(diagnosticsTools).toHaveLength(12);
+  it("routes script-detection and environment-leak goals to the bounded footprint audit", () => {
+    const matches = matchWorkflows(
+      "check whether this script has a getfenv leak or exposed virtual input provenance",
+      new Set(["execution-footprint-audit", "get-anticheat-surfaces"]),
+    );
+    const audit = matches.find((match) => match.id === "audit-execution-footprint");
+    expect(audit?.steps.map((step) => step.tool)).toEqual([
+      "execution-footprint-audit",
+      "get-anticheat-surfaces",
+    ]);
+  });
+
+  it("registers all 13 tools in the category index, each tagged Diagnostics", () => {
+    expect(diagnosticsTools).toHaveLength(13);
     for (const tool of diagnosticsTools) {
       expect(tool.category).toBe("Diagnostics");
     }
@@ -93,6 +106,7 @@ describe("Diagnostics tools", () => {
     const names = diagnosticsTools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length); // no duplicate names
     expect(names).toContain("bridge-status");
+    expect(names).toContain("execution-footprint-audit");
     expect(diagnosticsTools.find((t) => t.name === "bridge-status")?.requiresClient).toBe(false);
     // Session-management tools are also client-less; they read server-side
     // state (~/.executor-mcp/sessions/) rather than the game.
@@ -124,6 +138,20 @@ describe("Diagnostics tools", () => {
       // The probe list and resolver are inlined verbatim.
       expect(source).toContain('"getgc"');
       expect(source).toContain('"debug.getinfo"');
+      expect(source).toContain('"clonefunction"');
+      expect(source).toContain('"run_on_actor"');
+      expect(source).toContain('"getluastate"');
+      expect(source).toContain('"LuaStateProxy.new"');
+      expect(source).toContain('"cloneref"');
+      expect(source).toContain('"compareinstances"');
+      expect(source).toContain('"getcallingscript"');
+      expect(source).toContain('"getscriptclosure"');
+      expect(source).toContain('"getsenv"');
+      expect(source).toContain('"getfenv"');
+      expect(source).toContain('"mouse1click"');
+      expect(source).toContain('"keypress"');
+      expect(source).toContain('"keyclick"');
+      expect(source).toContain('"iswindowactive"');
       expect(source).toContain("local function __resolve(name)");
     });
 

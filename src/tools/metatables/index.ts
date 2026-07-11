@@ -19,6 +19,7 @@ import getScriptEnv from "./get-script-env.js";
 import getFunctionEnv from "./get-function-env.js";
 import listHooks from "./list-hooks.js";
 import restoreHook from "./restore-hook.js";
+import { closurePrimitiveTools } from "./closure-primitives.js";
 
 /** Every tool in the "Metatables & Closures" category, in registration order. */
 export const metatablesTools: Tool[] = [
@@ -41,4 +42,5 @@ export const metatablesTools: Tool[] = [
   getFunctionEnv,
   listHooks,
   restoreHook,
+  ...closurePrimitiveTools,
 ];

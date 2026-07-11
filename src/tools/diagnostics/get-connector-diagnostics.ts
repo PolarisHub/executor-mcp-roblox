@@ -9,7 +9,7 @@ export default defineTool({
     "execution environment. Every read is pcall-guarded, so an unavailable function is reported as null rather " +
     "than failing the call. Returns { threadIdentity, executor={ name, version }, hasWebSocket, gcInfoKB, " +
     "genvKeyCount, hasReg, hasRenv, capabilities={ getgc, hookfunction, getnilinstances, getactors, " +
-    "getcallbackvalue, firesignal, getconnections } }. Use this to confirm what the connector can do before " +
+    "getluastate, run_on_actor, clonefunction, newcclosure, cloneref, compareinstances, getcallingscript, getscriptclosure, getsenv, getfenv, mouse1click, keypress, getcallbackvalue, firesignal, getconnections } }. Use this to confirm what the connector can do before " +
     "relying on reflection/hooking tools, or to diagnose why a client is behaving unexpectedly.",
   category: "Diagnostics",
   input: z.object({
@@ -26,12 +26,19 @@ end
 -- Headline capability booleans: each is true only when the named global resolves
 -- to a function in the thread environment (getgenv() first, then _G).
 local function hasGlobal(name)
-  local g = nil
-  local okEnv, env = pcall(function() return getgenv and getgenv() or _G end)
-  if okEnv and type(env) == "table" then g = env end
-  if g == nil then g = _G end
-  local okIdx, val = pcall(function() return (g :: any)[name] end)
-  if okIdx and type(val) == "function" then return true end
+  local hosts = {}
+  local function addHost(host)
+    if type(host) ~= "table" then return end
+    for _, current in ipairs(hosts) do if current == host then return end end
+    hosts[#hosts + 1] = host
+  end
+  if type(getgenv) == "function" then local ok, value = pcall(getgenv); if ok then addHost(value) end end
+  if type(getfenv) == "function" then local ok, value = pcall(getfenv, 0); if ok then addHost(value) end end
+  addHost(_G)
+  for _, host in ipairs(hosts) do
+    local okIdx, val = pcall(function() return host[name] end)
+    if okIdx and type(val) == "function" then return true end
+  end
   return false
 end
 
@@ -84,6 +91,21 @@ local capabilities = {
   hookfunction = hasGlobal("hookfunction"),
   getnilinstances = hasGlobal("getnilinstances"),
   getactors = hasGlobal("getactors"),
+  getluastate = hasGlobal("getluastate"),
+  getactorstates = hasGlobal("getactorstates"),
+  run_on_actor = hasGlobal("run_on_actor"),
+  create_comm_channel = hasGlobal("create_comm_channel"),
+  clonefunction = hasGlobal("clonefunction"),
+  newcclosure = hasGlobal("newcclosure"),
+  restorefunction = hasGlobal("restorefunction"),
+  cloneref = hasGlobal("cloneref"),
+  compareinstances = hasGlobal("compareinstances"),
+  getcallingscript = hasGlobal("getcallingscript"),
+  getscriptclosure = hasGlobal("getscriptclosure"),
+  getsenv = hasGlobal("getsenv"),
+  getfenv = hasGlobal("getfenv"),
+  mouse1click = hasGlobal("mouse1click"),
+  keypress = hasGlobal("keypress"),
   getcallbackvalue = hasGlobal("getcallbackvalue"),
   firesignal = hasGlobal("firesignal"),
   getconnections = hasGlobal("getconnections"),

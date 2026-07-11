@@ -26,4 +26,30 @@ describe("connector load safety", () => {
     expect(connector).toContain("first + MAX_RPC_BATCH_CALLS - 1");
     expect(connector).toContain("activeScriptParents");
   });
+
+  it("advertises closure, Actor, state, script-identity, and input primitives during handshake", () => {
+    for (const capability of [
+      '"clonefunction"',
+      '"isfunctionhooked"',
+      '"newlclosure"',
+      '"restorefunction"',
+      '"run_on_actor"',
+      '"getluastate"',
+      '"getactorstates"',
+      '"create_comm_channel"',
+      '"LuaStateProxy.new"',
+      '"cloneref"',
+      '"compareinstances"',
+      '"getcallingscript"',
+      '"getscriptclosure"',
+      '"getsenv"',
+      '"getfenv"',
+      '"mouse1click"',
+      '"keypress"',
+      '"keyclick"',
+      '"iswindowactive"',
+    ]) {
+      expect(connector).toContain(capability);
+    }
+  });
 });

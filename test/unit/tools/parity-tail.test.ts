@@ -143,7 +143,19 @@ describe("parity tail tools", () => {
       expect(source).toContain("getthreadidentity");
       expect(source).toContain('type(WebSocket) == "table"');
       expect(source).toContain("capabilities = {");
+      expect(source).toContain("for _, host in ipairs(hosts) do");
       expect(source).toContain('hasGlobal("getconnections")');
+      expect(source).toContain('hasGlobal("getluastate")');
+      expect(source).toContain('hasGlobal("run_on_actor")');
+      expect(source).toContain('hasGlobal("clonefunction")');
+      expect(source).toContain('hasGlobal("cloneref")');
+      expect(source).toContain('hasGlobal("compareinstances")');
+      expect(source).toContain('hasGlobal("getcallingscript")');
+      expect(source).toContain('hasGlobal("getscriptclosure")');
+      expect(source).toContain('hasGlobal("getsenv")');
+      expect(source).toContain('hasGlobal("getfenv")');
+      expect(source).toContain('hasGlobal("mouse1click")');
+      expect(source).toContain('hasGlobal("keypress")');
     });
 
     it("forwards threadContext through the runLuau options when supplied", async () => {

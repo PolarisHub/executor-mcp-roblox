@@ -13,7 +13,8 @@ export default defineTool({
     "(getnilinstances), where detached watchdog scripts/objects often hide; and (4) any getgenv() global names that " +
     "look anti-cheat-related (matching detect/ban/kick/anticheat/flag/cheat, case-insensitive), which can reveal an " +
     "exploit's own loader or a leaked server-side guard name. " +
-    "Use this as a quick 'how watched am I?' read before installing hooks. Each probe degrades gracefully and is " +
+    "Use this only as lightweight ambient context after `execution-footprint-audit`; it reports observable surfaces " +
+    "and does not prove detection or provide concealment. Each probe degrades gracefully and is " +
     "pcall-guarded; missing executor functions are reported as unavailable rather than failing the call. " +
     "Returns { runServiceConnections, gameMetatableReadonly, nilInstanceCount, suspiciousGlobals, notes } or { error }.",
   category: "Diagnostics",

@@ -53,12 +53,11 @@ function mockContext(returnValue: unknown = { ok: true }): ToolContext & {
 }
 
 describe("Actors & Hidden tools", () => {
-  it("registers all 10 tools in the category index, each tagged correctly", () => {
-    expect(actorsHiddenTools).toHaveLength(10);
+  it("registers all discovery, Actor, and LuaStateProxy tools with unique names", () => {
+    expect(actorsHiddenTools).toHaveLength(26);
     for (const tool of actorsHiddenTools) {
       expect(tool.category).toBe("Actors & Hidden");
-      // All ten are read-only discovery scans — none mutate live game state.
-      expect(tool.mutatesState ?? false).toBe(false);
+      // The discovery tools above are read-only and do not mutate live game state.
       expect(tool.requiresClient ?? true).toBe(true);
     }
     const names = actorsHiddenTools.map((t) => t.name);
@@ -74,7 +73,26 @@ describe("Actors & Hidden tools", () => {
       "find-hidden-remotes",
       "get-actor-details",
       "find-detached-instances",
+      "actor-capabilities",
+      "run-on-actor",
+      "get-lua-state",
+      "get-game-state",
+      "list-lua-states",
+      "new-lua-state-proxy",
+      "get-lua-state-actors",
+      "execute-lua-state",
+      "fire-lua-state-event",
+      "is-parallel-context",
+      "create-comm-channel",
+      "get-comm-channel",
+      "fire-comm-channel",
+      "actor-event-monitor",
+      "comm-channel-monitor",
+      "lua-state-event-monitor",
     ]);
+    for (const tool of actorsHiddenTools.slice(0, 10)) {
+      expect(tool.mutatesState ?? false).toBe(false);
+    }
   });
 
   describe("list-actors", () => {

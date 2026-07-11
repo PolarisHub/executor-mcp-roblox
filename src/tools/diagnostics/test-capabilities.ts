@@ -13,14 +13,49 @@ const NAMES = [
   "debug.getupvalues",
   "debug.getprotos",
   "getfunctionhash",
+  "checkcaller",
+  "clonefunction",
+  "clonefunc",
+  "iscclosure",
+  "islclosure",
+  "isexecutorclosure",
+  "checkclosure",
+  "isourclosure",
+  "isfunctionhooked",
+  "isnewcclosure",
+  "iscustomcclosure",
+  "newlclosure",
+  "setstackhidden",
+  "getconstant",
+  "getupvalue",
+  "getproto",
+  "setconstant",
+  "setupvalue",
+  "setfenv",
   "getscriptbytecode",
+  "getscriptclosure",
+  "getcallingscript",
+  "getscriptfromthread",
+  "getscripthash",
   "getscripts",
   "getrunningscripts",
   "getloadedmodules",
   "getsenv",
+  "getfenv",
   "getactors",
+  "run_on_actor",
+  "getluastate",
+  "getgamestate",
+  "getactorstates",
+  "isparallel",
+  "is_parallel",
+  "create_comm_channel",
+  "get_comm_channel",
+  "LuaStateProxy.new",
   "getnilinstances",
   "getinstances",
+  "cloneref",
+  "compareinstances",
   "getgenv",
   "getrenv",
   "getreg",
@@ -47,24 +82,37 @@ const NAMES = [
   "getcustomasset",
   "request",
   "http_request",
+  "mouse1click",
+  "mouse1press",
+  "mouse1release",
+  "mouse2click",
+  "mouse2press",
+  "mouse2release",
+  "mousemoveabs",
+  "mousemoverel",
+  "mousescroll",
+  "keypress",
+  "keyrelease",
+  "keyclick",
+  "iswindowactive",
 ];
 
 export default defineTool({
   name: "test-capabilities",
-  title: "Executor capability matrix (~40 functions probed for availability)",
+  title: "Executor capability matrix (closure, Actor/state, and core primitives)",
   description:
-    "In-game capability matrix: probes a curated list of ~40 executor/runtime function names and reports which are " +
+    "In-game capability matrix: probes a curated executor/runtime function list and reports which are " +
     "present (callable) versus missing. For each name it checks the global environment (getgenv() first, then the " +
     "thread's environment / _G) and, for dotted names like 'debug.getinfo', walks the parent table — classifying the " +
     "leaf as available only when it is type=='function'. The probe NEVER calls the functions, so it is completely safe " +
     "and side-effect-free. " +
-    "Covers reflection (getgc, getconstants, getupvalues, getprotos, getinfo, debug.getinfo, getfunctionhash), script " +
-    "access (getscriptbytecode, getscripts, getrunningscripts, getloadedmodules, getsenv), instance/actor discovery " +
-    "(getactors, getnilinstances, getinstances), environments (getgenv, getrenv, getreg), hooking " +
+    "Covers reflection/closures (getgc, constants/upvalues/protos, clone/wrapper/type/hook/hash functions), script " +
+    "access (getscriptbytecode/closure/caller/hash, getscripts, getrunningscripts, getloadedmodules, getsenv/getfenv), instance/actor discovery " +
+    "(getactors, Actor Lua-state execution, communication channels, getnilinstances, getinstances), environments (getgenv, getrenv, getreg), hooking " +
     "(hookfunction, hookmetamethod, restorefunction, newcclosure), metatables (getrawmetatable, setrawmetatable, " +
     "setreadonly, isreadonly), namecall/signals (getnamecallmethod, getconnections, firesignal, replicatesignal, " +
     "getcallbackvalue, getsignalarguments), threads (setthreadidentity, getthreadidentity), and IO/misc (loadstring, " +
-    "fireproximityprompt, fireclickdetector, firetouchinterest, getcustomasset, request/http_request). " +
+    "fireproximityprompt, fireclickdetector, firetouchinterest, virtual-input globals, getcustomasset, request/http_request). " +
     "Use this to decide up-front whether a workflow is supported, or to compare two executors. " +
     "Returns { total, availableCount, missingCount, available[], missing[] } (both lists sorted) or { error }.",
   category: "Diagnostics",

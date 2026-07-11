@@ -28,10 +28,10 @@ function mockContext(returnValue: unknown = null): {
 }
 
 describe("metatables category index", () => {
-  it("exports all 19 tools with unique names", () => {
-    expect(metatablesTools).toHaveLength(19);
+  it("exports the metatable and complete closure surfaces with unique names", () => {
+    expect(metatablesTools).toHaveLength(36);
     const names = metatablesTools.map((t) => t.name);
-    expect(new Set(names).size).toBe(19);
+    expect(new Set(names).size).toBe(36);
   });
 
   it("labels every mutating tool with mutatesState and the live-state phrase", () => {
@@ -43,6 +43,11 @@ describe("metatables category index", () => {
       "set-closure-constant",
       "hook-function",
       "restore-hook",
+      "restore-function",
+      "set-stack-hidden",
+      "invoke-closure",
+      "set-function-env",
+      "release-closure-reference",
     ]);
     for (const tool of metatablesTools) {
       expect(tool.category).toBe("Metatables & Closures");
