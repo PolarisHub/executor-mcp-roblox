@@ -54,8 +54,8 @@ Pure types and rules with zero dependencies.
 Ports, use cases, and the tool contract — depends only on domain.
 
 - **Ports** (`ports/**`) — interfaces the outside world must satisfy.
-- **Tool contract** (`tool/**`) — `Tool` / `ToolContext` / `ToolResult`, the `defineTool` authoring helper, and the `ToolRegistry` catalog.
-- **Use-case services** (`services/**`) — `SessionManager` (owns per-session selection and resolution) and `ToolInvoker` (the single use case that runs a tool end to end).
+- **Tool contract** (`tool/**`) — `Tool` / `ToolContext` / `ToolResult`, the `defineTool` authoring helper, inferred and author-supplied AI contracts, definition quality, and the `ToolRegistry` catalog.
+- **Use-case services** (`services/**`) — `SessionManager` (owns per-session selection and resolution), `ToolInvoker` (the single use case that runs a tool end to end), and the shared schema/guidance compiler used by every tool surface.
 
 ### Infrastructure (`src/infrastructure/**`)
 

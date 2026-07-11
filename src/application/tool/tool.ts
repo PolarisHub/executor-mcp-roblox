@@ -65,6 +65,16 @@ export interface ToolContract {
   readonly failureRecovery: readonly string[];
 }
 
+/** Deterministic quality score produced for every defineTool declaration. */
+export interface ToolDefinitionQuality {
+  readonly score: number;
+  readonly grade: "A" | "B" | "C" | "D" | "F";
+  readonly explicitFieldDescriptions: number;
+  readonly inferredFieldDescriptions: number;
+  readonly issues: readonly string[];
+  readonly strengths: readonly string[];
+}
+
 /**
  * Everything a tool is allowed to touch. The invoker builds a fresh context per
  * call: it resolves the active client up front (for client-bound tools) and binds
@@ -132,5 +142,7 @@ export interface Tool<I = unknown> {
   readonly mutatesState?: boolean;
   /** Optional/derived machine-readable planning contract for AI orchestration. */
   readonly ai?: ToolContract;
+  /** Definition completeness report used by discovery/help and the quality audit. */
+  readonly quality?: ToolDefinitionQuality;
   execute(input: I, ctx: ToolContext): Promise<ToolResult>;
 }

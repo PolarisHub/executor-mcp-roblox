@@ -1,7 +1,8 @@
 import type { z } from "zod";
 import type { ToolCategory } from "../../domain/tool/category.js";
 import type { Tool, ToolContext, ToolResult, ToolContract } from "./tool.js";
-import { inferToolContract } from "./tool-contract.js";
+import { assessToolDefinition } from "../services/tool-definition-quality.js";
+import { inferToolContract, mergeToolContract } from "./tool-contract.js";
 
 /**
  * Authoring helper that infers a tool's input type from its zod schema, so a tool
@@ -42,9 +43,19 @@ export function defineTool<S extends z.ZodType>(definition: {
     mutatesState: definition.mutatesState ?? false,
     execute: definition.execute,
   };
-  const inferred = inferToolContract(base);
+  const inferred = inferToolContract({
+    ...base,
+    input: base.input,
+  });
+  const ai = mergeToolContract(inferred, definition.ai);
+  const quality = assessToolDefinition({
+    ...base,
+    input: base.input,
+    ai,
+  });
   return {
     ...base,
-    ai: definition.ai ? { ...inferred, ...definition.ai } : inferred,
+    ai,
+    quality,
   };
 }

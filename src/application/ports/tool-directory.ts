@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { ToolCategory } from "../../domain/tool/category.js";
-import type { ToolContract } from "../tool/tool.js";
+import type { ToolContract, ToolDefinitionQuality } from "../tool/tool.js";
 
 /**
  * A read-only, schema-aware view of the tool catalog, intended for tools that
@@ -16,6 +16,7 @@ export interface ToolDescriptor {
   readonly mutatesState: boolean;
   readonly requiresClient: boolean;
   readonly ai?: ToolContract;
+  readonly quality?: ToolDefinitionQuality;
   readonly input: z.ZodTypeAny;
 }
 

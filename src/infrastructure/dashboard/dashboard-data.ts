@@ -7,6 +7,7 @@ import type { OutputLog } from "../../application/ports/output-log.js";
 import type { SavedScriptsStore } from "../../application/ports/saved-scripts.js";
 import type { ScriptBridge } from "../../application/services/script-bridge.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
+import type { ToolDefinitionQuality, ToolContract } from "../../application/tool/tool.js";
 import type { HealthReporter } from "../observability/health.js";
 
 export interface DashboardDeps {
@@ -72,6 +73,8 @@ export interface ToolCatalogEntry {
   readonly category: string;
   readonly mutatesState: boolean;
   readonly requiresClient: boolean;
+  readonly phase: ToolContract["phase"];
+  readonly quality?: ToolDefinitionQuality;
 }
 
 export function buildDashboardState(deps: DashboardDeps): DashboardState {
@@ -128,5 +131,7 @@ export function buildToolCatalog(registry: ToolRegistry): ToolCatalogEntry[] {
     category: t.category,
     mutatesState: t.mutatesState ?? false,
     requiresClient: t.requiresClient !== false,
+    phase: t.ai?.phase ?? (t.mutatesState ? "act" : "observe"),
+    quality: t.quality,
   }));
 }

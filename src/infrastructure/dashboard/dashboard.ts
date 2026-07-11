@@ -3,9 +3,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Context, Hono } from "hono";
+import { z } from "zod";
 
 import { toDomainError } from "../../domain/errors/errors.js";
 import { ClientId } from "../../domain/shared/ids.js";
+import { documentedInputShape } from "../../application/services/schema-introspect.js";
+import {
+  buildToolGuidance,
+  formatToolDescription,
+} from "../../application/services/tool-definition-quality.js";
 import { BriefService } from "./dashboard-brief.js";
 import { CLASS_ICON_INDEX } from "./class-icons.js";
 import { buildDashboardState, buildToolCatalog, type DashboardDeps } from "./dashboard-data.js";
@@ -17,7 +23,10 @@ import { renderDashboardPage } from "./page.js";
 import { zodToJsonSchema } from "./zod-json-schema.js";
 
 /** Roblox Studio's `ClassImages.png` sprite strip, resolved relative to this module. */
-const CLASS_ICONS_PNG = join(dirname(fileURLToPath(import.meta.url)), "../../../assets/class-icons.png");
+const CLASS_ICONS_PNG = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../assets/class-icons.png",
+);
 
 /**
  * Serves the web dashboard and its JSON API on the bridge's HTTP server. The
@@ -73,15 +82,34 @@ export class Dashboard {
     app.get("/api/tools", (c) => c.json(buildToolCatalog(this.deps.registry)));
     app.get("/api/tools/schema", (c) =>
       c.json(
-        this.deps.registry.list().map((tool) => ({
-          name: tool.name,
-          title: tool.title,
-          description: tool.description,
-          category: tool.category,
-          mutatesState: tool.mutatesState ?? false,
-          requiresClient: tool.requiresClient !== false,
-          inputSchema: zodToJsonSchema(tool.input),
-        })),
+        this.deps.registry.list().map((tool) => {
+          const guidance = buildToolGuidance(tool);
+          return {
+            name: tool.name,
+            title: tool.title,
+            description: tool.description,
+            compiledDescription: formatToolDescription(tool),
+            category: tool.category,
+            mutatesState: tool.mutatesState ?? false,
+            requiresClient: tool.requiresClient !== false,
+            ai: tool.ai,
+            quality: guidance.quality,
+            signature: guidance.signature,
+            args: guidance.fields,
+            exampleInput: guidance.exampleInput,
+            example: guidance.example,
+            guidance: {
+              callWhen: guidance.callWhen,
+              avoidWhen: guidance.avoidWhen,
+              safety: guidance.safety,
+              execution: guidance.execution,
+              success: guidance.success,
+              alternatives: guidance.alternatives,
+              recovery: guidance.recovery,
+            },
+            inputSchema: zodToJsonSchema(z.object(documentedInputShape(tool.input))),
+          };
+        }),
       ),
     );
     app.get("/api/class-icons", (c) => c.json(CLASS_ICON_INDEX));
@@ -115,10 +143,7 @@ export class Dashboard {
       if (!this.classIcons) {
         try {
           const buf = readFileSync(CLASS_ICONS_PNG);
-          this.classIcons = buf.buffer.slice(
-            buf.byteOffset,
-            buf.byteOffset + buf.byteLength,
-          );
+          this.classIcons = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
         } catch {
           return c.text("class-icons.png not found", 404);
         }
@@ -361,7 +386,7 @@ export class Dashboard {
       const ct = c.req.header("content-type") ?? "";
       try {
         if (ct.includes("application/json")) {
-          body = (await c.req.json());
+          body = await c.req.json();
         } else {
           const form = await c.req.formData();
           body = { token: form.get("token") };
@@ -387,7 +412,9 @@ export class Dashboard {
 
 /** Minimal sign-in HTML — same dark theme, no JS framework. */
 function renderLoginPage(message?: string): string {
-  const msg = message ? `<div style="color:#e25c54;margin-bottom:12px;font-size:13px">${escapeHtml(message)}</div>` : "";
+  const msg = message
+    ? `<div style="color:#e25c54;margin-bottom:12px;font-size:13px">${escapeHtml(message)}</div>`
+    : "";
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8" />
@@ -436,11 +463,16 @@ function renderLoginPage(message?: string): string {
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     switch (c) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      default: return "&#39;";
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
     }
   });
 }

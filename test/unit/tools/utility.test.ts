@@ -12,6 +12,7 @@ import messageBox from "../../../src/tools/utility/message-box.js";
 import toolSchema from "../../../src/tools/utility/tool-schema.js";
 import toolPlan from "../../../src/tools/utility/tool-plan.js";
 import agentContext from "../../../src/tools/utility/agent-context.js";
+import toolQualityAudit from "../../../src/tools/utility/tool-quality-audit.js";
 
 interface Captured {
   source: string;
@@ -59,9 +60,9 @@ function plannerContext(): ToolContext {
 }
 
 describe("utility tools", () => {
-  it("exports 15 tools, all in the Utility category, with unique names", () => {
-    expect(utilityTools).toHaveLength(15);
-    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(15);
+  it("exports 16 tools, all in the Utility category, with unique names", () => {
+    expect(utilityTools).toHaveLength(16);
+    expect(new Set(utilityTools.map((t) => t.name)).size).toBe(16);
     for (const tool of utilityTools) {
       expect(tool.category).toBe("Utility");
     }
@@ -148,7 +149,21 @@ describe("utility tools", () => {
         name: string;
         camelCase: string;
         signature: string;
-        args: Array<{ name: string; type: string; optional: boolean; description: string | null }>;
+        compiledDescription: string;
+        quality: { score: number; grade: string };
+        guidance: {
+          safety: { readOnly: boolean };
+          recovery: string[];
+        };
+        args: Array<{
+          name: string;
+          type: string;
+          optional: boolean;
+          description: string;
+          descriptionSource: string;
+          constraints: string[];
+          example: unknown;
+        }>;
         example: string;
       };
       expect(data.name).toBe("get-players");
@@ -160,7 +175,16 @@ describe("utility tools", () => {
         type: "number?",
         optional: true,
         description: "Max players to return.",
+        descriptionSource: "explicit",
+        constraints: ["integer"],
+        example: 10,
       });
+      expect(data.compiledDescription).toContain("Signature: { limit: number?");
+      expect(data.compiledDescription).toContain("Safety: read-only");
+      expect(data.quality.grade).toMatch(/^[A-F]$/);
+      expect(data.quality.score).toBeGreaterThan(0);
+      expect(data.guidance.safety.readOnly).toBe(true);
+      expect(data.guidance.recovery.length).toBeGreaterThan(0);
       // Every field is optional → example has no positional args.
       expect(data.example).toBe("mcp.getPlayers()");
     });
@@ -170,8 +194,9 @@ describe("utility tools", () => {
       const result = await toolSchema.execute({ name: "set-instance-property" }, ctx);
       const data = result.data as { example: string };
       expect(data.example).toContain("mcp.setInstanceProperty(");
-      expect(data.example).toContain('path = "..."');
-      expect(data.example).toContain('property = "..."');
+      expect(data.example).toContain('path = "game.Workspace.Target"');
+      expect(data.example).toContain('property = "example"');
+      expect(data.example).toContain("value = nil");
     });
 
     it("returns near-miss suggestions with signatures when the name is unknown", async () => {
@@ -203,6 +228,38 @@ describe("utility tools", () => {
       const result = await toolSchema.execute({ search: "property" }, ctx);
       const data = result.data as { tools: Array<{ name: string }> };
       expect(data.tools.map((t) => t.name)).toEqual(["set-instance-property"]);
+    });
+  });
+
+  describe("tool-quality-audit", () => {
+    it("scores every selected tool and reports catalog-level authoring debt", async () => {
+      const input = toolQualityAudit.input.parse({ includePassing: true, minimumScore: 0 });
+      const result = await toolQualityAudit.execute(input, plannerContext());
+      const data = result.data as {
+        aggregate: {
+          tools: number;
+          averageScore: number;
+          passing: number;
+          effectiveUndocumentedFields: number;
+          inferredFieldDescriptions: number;
+        };
+        tools: Array<{
+          name: string;
+          signature: string;
+          recoverySteps: number;
+        }>;
+      };
+
+      expect(data.aggregate.tools).toBe(2);
+      expect(data.aggregate.passing).toBe(2);
+      expect(data.aggregate.averageScore).toBeGreaterThan(0);
+      expect(data.aggregate.effectiveUndocumentedFields).toBe(0);
+      expect(data.aggregate.inferredFieldDescriptions).toBeGreaterThan(0);
+      expect(new Set(data.tools.map((tool) => tool.name))).toEqual(
+        new Set(["get-players", "set-instance-property"]),
+      );
+      expect(data.tools.every((tool) => tool.signature.startsWith("{"))).toBe(true);
+      expect(data.tools.every((tool) => tool.recoverySteps > 0)).toBe(true);
     });
   });
 

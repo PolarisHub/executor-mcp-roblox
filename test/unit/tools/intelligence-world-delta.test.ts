@@ -34,7 +34,7 @@ describe("world-delta", () => {
     expect(worldDelta.ai).toMatchObject({
       phase: "observe",
       requiresCapabilities: ["getgenv"],
-      verifiesWith: ["observe-world"],
+      verifiesWith: expect.arrayContaining(["assert-state", "observe-world"]),
     });
     expect(worldDelta.ai?.produces).toEqual(
       expect.arrayContaining([

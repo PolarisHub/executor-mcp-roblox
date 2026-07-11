@@ -29,11 +29,14 @@ describe("emitMcpLuauTypes", () => {
     expect(out).toContain("-- The fully-qualified instance path.");
     expect(out).toContain("target: string,");
     expect(out).toContain("-- Cap on results returned.");
+    expect(out).toContain("-- Constraints: integer");
+    expect(out).toContain("-- Example: 10");
     expect(out).toContain("limit: number?,");
-    // A field without a `.describe()` still appears, but with no doc-comment
-    // line preceding it.
+    // A field without `.describe()` receives deterministic inferred help.
+    expect(out).toContain("-- Whether to enable quiet.");
     expect(out).toContain("quiet: boolean?,");
-    expect(out).toContain("sampleTool: (args: Mcp_SampleToolInput?) -> any,");
+    expect(out).toContain("-- Phase: observe; cost: medium; quality: A");
+    expect(out).toContain("sampleTool: (args: Mcp_SampleToolInput) -> any,");
   });
 
   it("declares mcp.help and mcp.publish/subscribe in the public surface", () => {

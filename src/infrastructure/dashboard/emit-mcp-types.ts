@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ToolRegistry } from "../../application/tool/registry.js";
 import { zodToLuauType } from "../../application/services/zod-luau-type.js";
 import { describeInputFields } from "../../application/services/schema-introspect.js";
+import { buildToolGuidance } from "../../application/services/tool-definition-quality.js";
 
 function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -26,13 +27,15 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
   const methodLines: string[] = [];
 
   for (const tool of tools) {
-    const aliasName = "Mcp_" + kebabToCamel(tool.name).replace(/^([a-z])/, (m) => m.toUpperCase()) + "Input";
+    const aliasName =
+      "Mcp_" + kebabToCamel(tool.name).replace(/^([a-z])/, (m) => m.toUpperCase()) + "Input";
+    const guidance = buildToolGuidance(tool);
+    const fields = describeInputFields(tool.input);
     // For object inputs, emit a structured alias whose fields each carry their
     // own `-- description` comment so Luau LSPs hover-render the docstring per
     // argument. For non-object inputs, fall back to the compact one-shot type.
     let typeBody: string;
     if (tool.input instanceof z.ZodObject) {
-      const fields = describeInputFields(tool.input);
       if (fields.length === 0) {
         typeBody = "{}";
       } else {
@@ -43,6 +46,13 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
             const trimmed = oneLine.length > 200 ? oneLine.slice(0, 197) + "..." : oneLine;
             lines.push(`    -- ${trimmed}`);
           }
+          if (field.constraints.length > 0) {
+            lines.push(`    -- Constraints: ${field.constraints.join("; ").slice(0, 220)}`);
+          }
+          if (field.defaultValue !== undefined) {
+            lines.push(`    -- Default: ${JSON.stringify(field.defaultValue).slice(0, 160)}`);
+          }
+          lines.push(`    -- Example: ${JSON.stringify(field.example).slice(0, 160)}`);
           lines.push(`    ${field.name}: ${field.type},`);
         }
         lines.push("  }");
@@ -56,6 +66,9 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
       }
     }
     aliasLines.push(`-- ${tool.title}`);
+    aliasLines.push(
+      `-- Phase: ${guidance.execution.phase}; cost: ${guidance.execution.estimatedCost}; quality: ${guidance.quality.grade} (${guidance.quality.score})`,
+    );
     if (tool.description) {
       const oneLine = tool.description.replace(/\s+/g, " ").trim();
       const trimmed = oneLine.length > 220 ? oneLine.slice(0, 217) + "..." : oneLine;
@@ -65,7 +78,8 @@ export function emitMcpLuauTypes(registry: ToolRegistry): string {
     aliasLines.push("");
 
     const camel = kebabToCamel(tool.name);
-    methodLines.push(`  ${camel}: (args: ${aliasName}?) -> any,`);
+    const argsType = guidance.requiredInputs.length > 0 ? aliasName : `${aliasName}?`;
+    methodLines.push(`  ${camel}: (args: ${argsType}) -> any,`);
   }
 
   return [

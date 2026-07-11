@@ -33,7 +33,7 @@ describe("state-transaction", () => {
     expect(stateTransaction.ai).toMatchObject({
       phase: "act",
       requiresCapabilities: ["getgenv"],
-      verifiesWith: [],
+      verifiesWith: ["assert-state"],
     });
     expect(stateTransaction.ai?.sideEffects.join(" ")).toContain(
       "connection disconnect cleanup is irreversible",

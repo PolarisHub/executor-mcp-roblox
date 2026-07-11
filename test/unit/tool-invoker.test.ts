@@ -160,6 +160,23 @@ describe("ToolInvoker", () => {
         message: string;
       }>;
       expect(issues[0]?.path).toBe("text");
+      expect((err as ValidationError).details).toMatchObject({
+        signature: "{ text: string }",
+        requiredInputs: ["text"],
+        example: 'mcp.echo({ text = "example" })',
+      });
+      const fields = (err as ValidationError).details?.["fields"] as Array<{
+        name: string;
+        description: string;
+        example: unknown;
+      }>;
+      expect(fields[0]).toMatchObject({
+        name: "text",
+        description: "text value for text.",
+        example: "example",
+      });
+      const recovery = (err as ValidationError).details?.["recovery"] as string[];
+      expect(recovery[0]).toContain("tool-schema");
     }
   });
 

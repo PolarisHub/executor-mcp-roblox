@@ -32,7 +32,7 @@ describe("MCP multi-agent session isolation", () => {
         description: "Test tool.",
         category: "Diagnostics",
         requiresClient: false,
-        input: z.object({}),
+        input: z.object({ query: z.string().optional() }),
         async execute() {
           return { data: {} };
         },
@@ -62,10 +62,31 @@ describe("MCP multi-agent session isolation", () => {
       clientB.connect(clientTransportB),
     ]);
     try {
-      await Promise.all([
+      const catalog = await clientA.listTools();
+      const registered = catalog.tools.find((tool) => tool.name === "session-probe");
+      expect(registered?.description).toContain("Signature: { query: string? }");
+      expect(registered?.description).toContain("Phase: observe");
+      expect(registered?.description).toContain("Safety: read-only");
+      expect(registered?.description).toContain("On failure:");
+      expect(registered?.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      });
+      expect(
+        (registered?.inputSchema.properties as Record<string, { description?: string }>)["query"]
+          ?.description,
+      ).toContain("search text");
+
+      const [resultA] = await Promise.all([
         clientA.callTool({ name: "session-probe", arguments: {} }),
         clientB.callTool({ name: "session-probe", arguments: {} }),
       ]);
+      const content = resultA.content as Array<{ type: string; text?: string }>;
+      expect(content[0]).toMatchObject({
+        type: "text",
+        text: "Summary: Session probe completed.",
+      });
       expect(invoke.mock.calls.map(([request]) => request.sessionId).sort()).toEqual([
         "agent-a",
         "agent-b",

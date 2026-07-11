@@ -11,13 +11,17 @@ import type { ToolInvoker } from "../../application/services/tool-invoker.js";
 import type { Tool } from "../../application/tool/tool.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
 import type { SessionId } from "../../domain/shared/ids.js";
-import { inputSignature } from "../../application/services/schema-introspect.js";
+import { documentedInputShape } from "../../application/services/schema-introspect.js";
 import { rankTools } from "../../application/services/tool-discovery.js";
+import {
+  buildToolGuidance,
+  defaultToolSummary,
+  formatToolDescription,
+} from "../../application/services/tool-definition-quality.js";
 import { formatDomainError } from "./error-mapping.js";
 
 const SERVER_NAME = "executor-mcp-roblox";
 const DEFAULT_VERSION = "2.0.0";
-const MUTATES_NOTE = " (writes live game state)";
 
 /**
  * Encode tool data as a stable string for the MCP response. JSON.stringify can
@@ -51,6 +55,7 @@ function recoveryCatalog(registry: ToolRegistry): ToolDescriptor[] {
     mutatesState: tool.mutatesState === true,
     requiresClient: tool.requiresClient !== false,
     ai: tool.ai,
+    quality: tool.quality,
     input: tool.input,
   }));
 }
@@ -156,6 +161,10 @@ export class McpAdapter {
       `At the start of a task or after reconnects, call \`agent-context\` once. It reports connected clients, active ` +
         `selection, game identity, executor capabilities, and concrete next actions in one read-only brief. Do not ` +
         `assume the active place, JobId, executor, or capability set from an earlier task.`,
+      `Every registered tool has a compiled signature, documented fields, realistic examples, prerequisites, capability ` +
+        `requirements, output contracts, mutation side effects, verification paths, and recovery guidance. Use ` +
+        `\`tool-schema\` for the complete definition and \`tool-quality-audit\` to inspect catalog quality or inferred ` +
+        `documentation debt. Validation errors repeat the exact fields and a corrected invocation example.`,
       "Character fallback rule: if get-local-player-info reports characterRecovery, treat that as a live notification that the standard Character/Humanoid/HumanoidRootPart path is unavailable or custom. Do not retry the same path. Call discover-character, search-instances, or script to search the actual game, then pass the returned model, Humanoid, and root-part paths into later tools. The recovery payload includes a bounded custom Luau script you can run or adapt.",
       "World Brain rule: for interaction tasks or uncertain paths, call observe-world first. Prefer its semantic entity handles and exact evidence over guessed instance paths or screen coordinates; use resolve-entity immediately before acting when state may have changed. Use world-delta for bounded event-driven changes instead of repeated full scans.",
       `For closed-loop execution, prefer \`smart-task\`: plan or preview first, set hard budgets, allow mutations only ` +
@@ -181,16 +190,8 @@ export class McpAdapter {
 
   private registerTool(server: McpServer, tool: Tool, identity: McpSessionIdentity): void {
     const { invoker, registry } = this.deps;
-    const contract = tool.ai;
-    const contractHint = contract
-      ? ` AI contract: phase=${contract.phase}; ` +
-        `${contract.prerequisites.length ? `prerequisites=${contract.prerequisites.join(",")}; ` : ""}` +
-        `${contract.verifiesWith.length ? `verifyWith=${contract.verifiesWith.join(",")}; ` : ""}` +
-        `${contract.requiresCapabilities.length ? `capabilities=${contract.requiresCapabilities.join(",")}; ` : ""}` +
-        `${contract.alternatives.length ? `alternatives=${contract.alternatives.join(",")}.` : ""}`
-      : "";
-    const description = `${tool.description}${tool.mutatesState ? MUTATES_NOTE : ""}${contractHint}`;
-    const shape = (tool.input as z.ZodObject<z.ZodRawShape>).shape;
+    const description = formatToolDescription(tool);
+    const shape = documentedInputShape(tool.input);
 
     server.registerTool(
       tool.name,
@@ -202,6 +203,8 @@ export class McpAdapter {
           title: tool.title,
           readOnlyHint: !tool.mutatesState,
           destructiveHint: tool.mutatesState === true,
+          idempotentHint: !tool.mutatesState,
+          openWorldHint: ["Network", "Filesystem", "Windows"].includes(tool.category),
         },
       },
       async (args: Record<string, unknown>) => {
@@ -227,11 +230,10 @@ export class McpAdapter {
                   ),
                 )
               : result.data;
+          const summary = defaultToolSummary(tool, result);
           return {
             content: [
-              ...(result.summary
-                ? [{ type: "text" as const, text: `Summary: ${result.summary}` }]
-                : []),
+              { type: "text" as const, text: `Summary: ${summary}` },
               { type: "text" as const, text: safeStringify(responseData) },
             ],
             ...(asStructuredContent(responseData)
@@ -302,7 +304,8 @@ export class McpAdapter {
         description:
           "Discover the right tool without scanning all of them. Call with NO arguments to see every " +
           "category and its count plus the total. Pass { category } to list that category's tools, or " +
-          "{ search } to rank tools against a natural-language goal. Results include signatures and safety flags. Reads the server's " +
+          "{ search } to rank tools against a natural-language goal. Results include signatures, required inputs, " +
+          "definition quality, execution phase/cost, capabilities, outputs, contracts, and safety flags. Reads the server's " +
           "own tool catalog (no game client required).",
         inputSchema: input.shape,
         annotations: { title: "Browse/search this server's tools", readOnlyHint: true },
@@ -340,16 +343,25 @@ export class McpAdapter {
           matchedTerms: [],
           why: "Category listing.",
         }));
-    const matches = ranked.map((entry) => ({
-      name: entry.tool.name,
-      title: entry.tool.title,
-      category: entry.tool.category,
-      signature: inputSignature(entry.tool.input),
-      mutatesState: entry.tool.mutatesState === true,
-      requiresClient: entry.tool.requiresClient !== false,
-      ai: entry.tool.ai,
-      ...(search ? { score: Math.round(entry.score * 10) / 10, why: entry.why } : {}),
-    }));
+    const matches = ranked.map((entry) => {
+      const guidance = buildToolGuidance(entry.tool);
+      return {
+        name: entry.tool.name,
+        title: entry.tool.title,
+        category: entry.tool.category,
+        signature: guidance.signature,
+        quality: guidance.quality,
+        requiredInputs: guidance.requiredInputs,
+        phase: guidance.execution.phase,
+        estimatedCost: guidance.execution.estimatedCost,
+        capabilities: guidance.execution.capabilities,
+        produces: guidance.success.produces,
+        mutatesState: entry.tool.mutatesState === true,
+        requiresClient: entry.tool.requiresClient !== false,
+        ai: entry.tool.ai,
+        ...(search ? { score: Math.round(entry.score * 10) / 10, why: entry.why } : {}),
+      };
+    });
 
     return {
       ...(category ? { category } : {}),
@@ -391,7 +403,8 @@ export class McpAdapter {
         description:
           "Surface the right tool faster from a natural-language goal. Uses intent aliases and field-aware ranking, " +
           "then adds a small past-success bias so tools that have worked in this server session float above equally " +
-          "relevant untouched tools. Returns exact signatures, mutation/client flags, match reasons, and usage stats. " +
+          "relevant untouched tools. Returns exact signatures, required inputs, definition quality, phase/cost, " +
+          "capabilities, outputs, mutation/client flags, match reasons, and usage stats. " +
           "Pass { keyword } (required), { limit } (default 10), and optional { category }.",
         inputSchema: input.shape,
         annotations: { title: "Suggest tools ranked by past success", readOnlyHint: true },
@@ -420,11 +433,18 @@ export class McpAdapter {
         const successRatio = runs > 0 ? (runs - errors) / runs : 0;
         const successScore = successRatio * Math.log10(runs + 1) * 50;
         const score = entry.score + successScore;
+        const guidance = buildToolGuidance(entry.tool);
         return {
           name: entry.tool.name,
           title: entry.tool.title,
           category: entry.tool.category,
-          signature: inputSignature(entry.tool.input),
+          signature: guidance.signature,
+          quality: guidance.quality,
+          requiredInputs: guidance.requiredInputs,
+          phase: guidance.execution.phase,
+          estimatedCost: guidance.execution.estimatedCost,
+          capabilities: guidance.execution.capabilities,
+          produces: guidance.success.produces,
           mutatesState: entry.tool.mutatesState === true,
           requiresClient: entry.tool.requiresClient !== false,
           ai: entry.tool.ai,

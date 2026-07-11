@@ -26,6 +26,7 @@ import type { ToolRegistry } from "../tool/registry.js";
 import type { ScriptBridge } from "./script-bridge.js";
 import type { SessionManager } from "./session-manager.js";
 import { classifyFailure } from "./recovery-intelligence.js";
+import { buildToolGuidance } from "./tool-definition-quality.js";
 
 export interface ToolInvokerDeps {
   readonly registry: ToolRegistry;
@@ -169,6 +170,7 @@ export class ToolInvoker {
         sideEffects: tool.mutatesState ? ["writes live game/client state"] : [],
         failureRecovery: [],
       },
+      quality: tool.quality,
       input: tool.input,
     });
     return {
@@ -187,8 +189,23 @@ export class ToolInvoker {
 
     const parsed = tool.input.safeParse(request.input);
     if (!parsed.success) {
+      const guidance = buildToolGuidance(tool);
       throw new ValidationError(`Invalid arguments for "${tool.name}".`, {
         issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+        signature: guidance.signature,
+        requiredInputs: guidance.requiredInputs,
+        fields: guidance.fields.map((field) => ({
+          name: field.name,
+          type: field.type,
+          optional: field.optional,
+          description: field.description,
+          ...(field.defaultValue !== undefined ? { defaultValue: field.defaultValue } : {}),
+          constraints: field.constraints,
+          example: field.example,
+        })),
+        exampleInput: guidance.exampleInput,
+        example: guidance.example,
+        recovery: guidance.recovery.slice(0, 3),
       });
     }
 

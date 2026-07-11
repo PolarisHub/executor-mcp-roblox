@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
 import { inferToolContract } from "../../application/tool/tool-contract.js";
+import { rankTools } from "../../application/services/tool-discovery.js";
+import {
+  buildToolGuidance,
+  formatToolDescription,
+} from "../../application/services/tool-definition-quality.js";
 import {
   describeInputFields,
   inputSignature,
@@ -39,14 +44,6 @@ function nearestNames(name: string, all: readonly string[], limit = 3): string[]
     .map((pair) => pair.candidate);
 }
 
-function exampleValue(type: string): string {
-  if (type.includes("string")) return '"..."';
-  if (type.includes("number")) return "0";
-  if (type.includes("boolean")) return "false";
-  if (type.startsWith("{")) return "{}";
-  return "nil";
-}
-
 /**
  * Returns the full input schema and a compact Luau-flavored signature for one
  * (or every) tool on this server. The point is in-script introspection: from
@@ -60,7 +57,7 @@ export default defineTool({
   title: "Get a tool's input schema and Luau signature",
   description:
     "Return the input schema for any tool on this server in a compact, Luau-friendly form. Pass { name } " +
-    "for one tool: returns its title, description, category, mutatesState, requiresClient, a one-line " +
+    "for one tool: returns its title, compiled description, quality grade, safety/execution/success/recovery guidance, category, mutatesState, requiresClient, a one-line " +
     "Luau signature (e.g. `{ limit: number?, includeBots: boolean? }`), a per-field list with type + " +
     "description + optional flag, and a runnable `mcp.<camelCase>({...})` example. Pass { search } to " +
     "match a keyword across names/titles and get back a compact list of name + signature. With no args, " +
@@ -115,46 +112,57 @@ export default defineTool({
       const signature = inputSignature(descriptor.input);
       const camel = kebabToCamel(descriptor.name);
       const contract = descriptor.ai ?? inferToolContract(descriptor);
-      const exampleArgs = fields
-        .filter((f) => !f.optional)
-        .slice(0, 3)
-        .map((f) => `${f.name} = ${exampleValue(f.type)}`)
-        .join(", ");
-      const example = exampleArgs ? `mcp.${camel}({ ${exampleArgs} })` : `mcp.${camel}()`;
+      const guidance = buildToolGuidance(descriptor);
       return {
         data: {
           name: descriptor.name,
           camelCase: camel,
           title: descriptor.title,
           description: descriptor.description,
+          compiledDescription: formatToolDescription(descriptor),
           category: descriptor.category,
           mutatesState: descriptor.mutatesState,
           requiresClient: descriptor.requiresClient,
           ai: contract,
+          quality: guidance.quality,
+          guidance: {
+            callWhen: guidance.callWhen,
+            avoidWhen: guidance.avoidWhen,
+            safety: guidance.safety,
+            execution: guidance.execution,
+            success: guidance.success,
+            alternatives: guidance.alternatives,
+            recovery: guidance.recovery,
+          },
           signature,
           args: fields,
-          example,
+          exampleInput: guidance.exampleInput,
+          example: guidance.example,
         },
       };
     }
 
     const term = search?.toLowerCase();
-    const matches = directory
+    const candidates = directory
       .list()
-      .filter((tool) => (category ? tool.category === category : true))
-      .filter((tool) =>
-        term
-          ? tool.name.toLowerCase().includes(term) ||
-            tool.title.toLowerCase().includes(term) ||
-            tool.description.toLowerCase().includes(term)
-          : true,
-      )
-      .map((tool) => ({
+      .filter((tool) => (category ? tool.category === category : true));
+    const ranked = term
+      ? rankTools(term, candidates, candidates.length).map((entry) => entry.tool)
+      : candidates;
+    const matches = ranked.map((tool) => {
+      const guidance = buildToolGuidance(tool);
+      return {
         name: tool.name,
         camelCase: kebabToCamel(tool.name),
+        title: tool.title,
         category: tool.category,
-        signature: inputSignature(tool.input),
-      }));
+        signature: guidance.signature,
+        requiredInputs: guidance.requiredInputs,
+        phase: guidance.execution.phase,
+        estimatedCost: guidance.execution.estimatedCost,
+        quality: guidance.quality,
+      };
+    });
 
     return {
       data: {

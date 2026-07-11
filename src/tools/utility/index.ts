@@ -15,6 +15,7 @@ import toolPlan from "./tool-plan.js";
 import agentContext from "./agent-context.js";
 import agentRun from "./agent-run.js";
 import agentMemory from "./agent-memory.js";
+import toolQualityAudit from "./tool-quality-audit.js";
 
 /** Miscellaneous executor utilities (FastFlags, FPS cap, HWID, clipboard, teleport queue, saveinstance, messagebox). */
 export const utilityTools: Tool[] = [
@@ -33,4 +34,5 @@ export const utilityTools: Tool[] = [
   agentContext,
   agentRun,
   agentMemory,
+  toolQualityAudit,
 ];

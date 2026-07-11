@@ -4,7 +4,7 @@
 > `defineTool` contract (a handful of legacy tools were merged into cleaner
 > equivalents — e.g. `get-data-by-code` → `run-luau`, `get-descendants-tree` →
 > `get-instance-tree` — and `list-tools` is now a built-in of the MCP adapter).
-> The toolkit now ships **286 tools across 22 categories**: full functional parity
+> The toolkit now ships **287 tools across 22 categories**: full functional parity
 > plus new **Volt power tools** (Filesystem, Crypt, Drawing, RakNet packets,
 > WebSocket, HTTP, Fast Flags, `filtergc`, `gethui`, cache, debug-stack tools, and
 > the grounded Intelligence layer).
@@ -125,9 +125,9 @@ Counts are the canonical post-migration totals (the categories are the fixed set
 | Semantic Search       |        3 | embedding-backed script search, indexing, and index status                                                                 |
 | Session & Client      |        8 | client discovery/selection, session isolation, player/local-player/place details, and fanout                               |
 | Signals & Connections |       16 | connection enumeration, signal fire/replication, signal arguments, internals, and replication whitelist                    |
-| Utility               |       15 | tool discovery/schema/planning, agent context/runtime/memory, playbooks, and general helpers                               |
+| Utility               |       16 | tool discovery/schema/planning/quality auditing, agent context/runtime/memory, playbooks, and general helpers              |
 | Windows               |        2 | list Roblox windows and capture window screenshots                                                                         |
-| **Total**             |  **286** |                                                                                                                            |
+| **Total**             |  **287** |                                                                                                                            |
 
 > Note on source layout: the legacy folders under `_legacy/src/tools/impl/` (e.g. `reflection/`, `advanced/`, `clients/`) do **not** map 1:1 to these 16 categories — the legacy `index.ts` groups registrations into categories via `setToolCategory(...)`. When migrating, assign the **category** from the table above, not from the legacy folder name.
 
