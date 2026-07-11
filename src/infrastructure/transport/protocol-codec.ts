@@ -39,7 +39,7 @@ const opResultSchema = z.union([
   z.object({
     ok: z.literal(false),
     error: z.string(),
-    kind: z.enum(["timeout", "runtime"]).optional(),
+    kind: z.enum(["timeout", "runtime", "overloaded"]).optional(),
   }),
 ]) satisfies z.ZodType<OpResult>;
 
@@ -50,6 +50,7 @@ const clientOpSchema = z.object({
   timeoutMs: z.number(),
   env: z.enum(["fresh", "vm", "vm-reset"]).optional(),
   scriptToken: z.string().optional(),
+  priority: z.enum(["normal", "nested"]).optional(),
 }) satisfies z.ZodType<ClientOp>;
 
 const rpcResultSchema = z.union([

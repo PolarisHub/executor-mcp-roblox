@@ -35,6 +35,14 @@ export interface AppConfig {
   };
   readonly bridge: {
     readonly heartbeatIntervalMs: number;
+    /** Per Roblox client. Minimum 2 keeps a reserved lane for nested script RPCs. */
+    readonly maxConcurrentEvals?: number;
+    readonly maxQueuedEvals?: number;
+    readonly maxQueuedSourceBytes?: number;
+    readonly rpcBatchConcurrency?: number;
+    readonly maxRpcBatchCalls?: number;
+    readonly maxConcurrentRpcFrames?: number;
+    readonly maxQueuedRpcFrames?: number;
     /**
      * Optional shared secret. When set, connectors must send this exact string
      * as `client.token` in their hello frame or the bridge rejects them. Closes

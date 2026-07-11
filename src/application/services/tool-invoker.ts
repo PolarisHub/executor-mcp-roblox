@@ -14,6 +14,7 @@ import type { AppConfig } from "../ports/config.js";
 import type { Clock } from "../ports/clock.js";
 import type { ClientDirectory } from "../ports/client-directory.js";
 import type { ExecutionGateway } from "../ports/execution-gateway.js";
+import type { EvalPriority } from "../ports/execution-gateway.js";
 import type { Logger } from "../ports/logger.js";
 import type { Metrics } from "../ports/metrics.js";
 import type { SavedScriptsStore } from "../ports/saved-scripts.js";
@@ -48,6 +49,8 @@ export interface InvocationRequest {
   readonly input: unknown;
   readonly sessionId: SessionId;
   readonly sessionLabel: string;
+  /** Internal lane used by tools invoked from a parent in-game script. */
+  readonly priority?: EvalPriority;
 }
 
 const INTELLIGENCE_PHASES: Readonly<Record<string, IntelligencePhase>> = {
@@ -218,6 +221,7 @@ export class ToolInvoker {
           input,
           sessionId: request.sessionId,
           sessionLabel: request.sessionLabel,
+          ...(request.priority ? { priority: request.priority } : {}),
         }),
       scripting: {
         baseUrl: this.scriptBaseUrl(),
@@ -242,6 +246,10 @@ export class ToolInvoker {
             timeoutMs: options?.timeoutMs ?? config.execution.defaultTimeoutMs,
             ...(options?.env ? { env: options.env } : {}),
             ...(options?.scriptToken ? { scriptToken: options.scriptToken } : {}),
+            ...((options?.priority ?? request.priority)
+              ? { priority: options?.priority ?? request.priority }
+              : {}),
+            schedulerKey: request.sessionId,
           },
           controller.signal,
         );
@@ -255,6 +263,10 @@ export class ToolInvoker {
             timeoutMs: options?.timeoutMs ?? config.execution.defaultTimeoutMs,
             ...(options?.env ? { env: options.env } : {}),
             ...(options?.scriptToken ? { scriptToken: options.scriptToken } : {}),
+            ...((options?.priority ?? request.priority)
+              ? { priority: options?.priority ?? request.priority }
+              : {}),
+            schedulerKey: request.sessionId,
           },
           controller.signal,
         ),

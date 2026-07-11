@@ -78,6 +78,7 @@ export class ScriptBridge {
         input: args ?? {},
         sessionId: grant.sessionId,
         sessionLabel: grant.sessionLabel,
+        priority: "nested",
       });
       if (result.isError) {
         const message = typeof result.data === "string" ? result.data : JSON.stringify(result.data);

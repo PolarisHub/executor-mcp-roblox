@@ -186,7 +186,10 @@ function compose(): Application {
   });
 
   const mcp = new McpAdapter({ registry, invoker, config, logger, activity });
-  const mcpHttp = new McpHttpEndpoint({ createServer: () => mcp.buildServer() });
+  const mcpHttp = new McpHttpEndpoint({
+    createServer: (identity) => mcp.buildServer(identity),
+    sessionLabelPrefix: `${config.session.label}-agent`,
+  });
   bridge.addRoutes((app) => {
     app.all("/mcp", (c) => mcpHttp.handle(c.req.raw));
   });

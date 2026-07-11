@@ -100,6 +100,7 @@ The connector does **not** wait for `welcome` before it is willing to receive
     "source": "return game.Players.LocalPlayer.Name",
     "threadContext": 8, // Roblox thread identity (2 = game scripts, 8 = elevated)
     "timeoutMs": 5000, // hard deadline; exceeding it yields a timeout result
+    "priority": "normal", // "nested" uses the lane reserved for in-script mcp.* work
   },
 }
 ```
@@ -110,13 +111,15 @@ Execution rules in the connector:
    result (`kind = "runtime"`).
 2. **Thread identity.** If `setthreadidentity` exists, set it to `threadContext`
    (guarded). Absent → skipped.
-3. **Run on a worker thread.** The compiled function runs inside `task.spawn` so the
-   socket reader never blocks, and only the **first** returned value is captured
-   (per the contract).
-4. **Deadline.** The connector polls the worker against `timeoutMs`. If the deadline
+3. **Bounded admission.** The op enters a fixed-capacity, byte-capped queue. Only a
+   small worker pool may run at once; nested script RPC work has a reserved lane.
+   Queue overflow returns `kind = "overloaded"` instead of spawning more work.
+4. **Run on a worker thread.** The compiled function runs inside a bounded
+   `task.spawn` worker, and only the **first** returned value is captured.
+5. **Deadline.** Queue time counts against `timeoutMs`. The connector polls the worker against the remaining deadline. If the deadline
    passes before completion, the worker is `task.cancel`ed and a **timeout** result
    is returned.
-5. **Encode.** The captured value is converted to a JSON-safe form (see §4) and
+6. **Encode.** The captured value is converted to a JSON-safe form (see §4) and
    serialized.
 
 Everything above is wrapped in `pcall`, so a single misbehaving op can never crash
@@ -151,8 +154,9 @@ Failure (deadline exceeded):
 ```
 
 `kind` is `"runtime"` for compile/runtime errors and `"timeout"` for deadline
-overruns. The server maps these to `ExecutionFailedError` / `ExecutionTimeoutError`
-respectively.
+overruns. `"overloaded"` means a bounded queue rejected the op before execution.
+The server maps these to `ExecutionFailedError`, `ExecutionTimeoutError`, or the
+retryable `BridgeOverloadedError` respectively.
 
 ---
 
@@ -179,10 +183,12 @@ Bounds (so a pathological value cannot produce an unbounded payload):
 
 - **Depth** is capped at `6`; deeper nodes become the string `"<max-depth>"`.
 - **Cycles** are detected via a visited-set; a revisited table becomes `"<cycle>"`.
-- **Table size** is capped at `1000` entries; the overflow is marked
+- **Table size** is capped at `500` entries; the overflow is marked
   `"… (truncated)"`.
 - **Strings** longer than `50 000` chars are truncated with a `"… (truncated)"`
   suffix.
+- **Whole-result budgets** cap traversal at `5000` nodes and retained string data
+  at `1 MiB`; table keys are capped at `256` characters.
 
 A table is treated as a JSON **array** only when its keys are exactly the contiguous
 range `1..n`; otherwise it is encoded as a JSON **object**.
@@ -193,8 +199,8 @@ range `1..n`; otherwise it is encoded as a JSON **object**.
 
 The server sends `ping { id }` on the cadence it announced in `welcome`
 (`heartbeatIntervalMs`). The connector replies promptly with `pong { id }`, echoing
-the id. Ping handling runs on its own thread, so it stays responsive even while an
-eval op is in flight. Missed pongs let the server detect a dead connection and prune
+the id. The socket callback only decodes and enqueues work, so ping handling stays
+responsive even while eval workers are in flight. Missed pongs let the server detect a dead connection and prune
 the client.
 
 ---

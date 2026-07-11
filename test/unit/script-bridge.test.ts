@@ -25,6 +25,7 @@ describe("ScriptBridge", () => {
       input: { a: 1 },
       sessionId: "s1",
       sessionLabel: "label",
+      priority: "nested",
     });
   });
 

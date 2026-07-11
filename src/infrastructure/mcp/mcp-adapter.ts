@@ -10,6 +10,7 @@ import { classifyFailure } from "../../application/services/recovery-intelligenc
 import type { ToolInvoker } from "../../application/services/tool-invoker.js";
 import type { Tool } from "../../application/tool/tool.js";
 import type { ToolRegistry } from "../../application/tool/registry.js";
+import type { SessionId } from "../../domain/shared/ids.js";
 import { inputSignature } from "../../application/services/schema-introspect.js";
 import { rankTools } from "../../application/services/tool-discovery.js";
 import { formatDomainError } from "./error-mapping.js";
@@ -67,6 +68,11 @@ export interface McpAdapterDeps {
   readonly activity: ActivityLog;
 }
 
+export interface McpSessionIdentity {
+  readonly id: SessionId;
+  readonly label: string;
+}
+
 /**
  * Exposes the {@link ToolRegistry} over the Model Context Protocol stdio
  * transport. This is the only place that knows about the MCP SDK: it translates
@@ -75,12 +81,12 @@ export interface McpAdapterDeps {
  * content. Nothing below the interface layer touches the SDK.
  */
 export class McpAdapter {
-  private server?: McpServer;
+  private stdioServer?: McpServer;
 
   constructor(private readonly deps: McpAdapterDeps) {}
 
   /** Build the MCP server and register every catalog tool plus `list-tools`. */
-  buildServer(): McpServer {
+  buildServer(identity: McpSessionIdentity = this.deps.config.session): McpServer {
     const { registry, logger } = this.deps;
     const server = new McpServer(
       { name: SERVER_NAME, version: DEFAULT_VERSION },
@@ -88,7 +94,7 @@ export class McpAdapter {
     );
 
     for (const tool of registry.list()) {
-      this.registerTool(server, tool);
+      this.registerTool(server, tool, identity);
     }
     this.registerListTools(server);
     this.registerSuggestTools(server);
@@ -97,13 +103,13 @@ export class McpAdapter {
       { tools: registry.size, categories: registry.categoryCounts().length },
       "MCP server built",
     );
-    this.server = server;
     return server;
   }
 
   /** Connect the built server over the stdio transport. */
   async connectStdio(): Promise<void> {
-    const server = this.server ?? this.buildServer();
+    const server = this.stdioServer ?? this.buildServer(this.deps.config.session);
+    this.stdioServer = server;
     const transport = new StdioServerTransport();
     await server.connect(transport);
     this.deps.logger.info("MCP server connected over stdio");
@@ -167,12 +173,14 @@ export class McpAdapter {
         `whenever one exists; reach for them from inside \`script\` as \`mcp.<name>(...)\` to combine them.`,
       `When several games are connected, select one first (list-clients / select-client), or use \`script-fanout\` ` +
         `to run the same script across N clients in parallel. Most tools degrade cleanly with { error } when a ` +
-        `capability is missing from the executor, so it is safe to probe.`,
+        `capability is missing from the executor, so it is safe to probe. Each MCP connection has an isolated ` +
+        `selection session. If BRIDGE_OVERLOADED is returned, do not launch an immediate retry storm: call ` +
+        `\`bridge-status\`, let the bounded queue drain, reduce fan-out, and retry once with jitter.`,
     ].join("\n\n");
   }
 
-  private registerTool(server: McpServer, tool: Tool): void {
-    const { invoker, config, registry } = this.deps;
+  private registerTool(server: McpServer, tool: Tool, identity: McpSessionIdentity): void {
+    const { invoker, registry } = this.deps;
     const contract = tool.ai;
     const contractHint = contract
       ? ` AI contract: phase=${contract.phase}; ` +
@@ -201,8 +209,8 @@ export class McpAdapter {
           const result = await invoker.invoke({
             toolName: tool.name,
             input: args,
-            sessionId: config.session.id,
-            sessionLabel: config.session.label,
+            sessionId: identity.id,
+            sessionLabel: identity.label,
           });
           const responseData =
             result.isError && asStructuredContent(result.data)?.["recovery"] === undefined

@@ -11,8 +11,8 @@
 	Design goals (mirrors the rewrite's robustness rules):
 		- Every executor-specific global is type-guarded before use; absence degrades
 		  gracefully instead of erroring.
-		- Every inbound op runs inside pcall on its own task.spawn'd thread, so one bad
-		  op can never kill the socket or block sibling ops.
+		- Inbound evals use a bounded, priority-aware queue. A reserved nested lane
+		  prevents script/mcp.* deadlocks without allowing task-spawn storms.
 		- Results are encoded to a JSON-safe form (recursive, cycle-guarded, depth/size
 		  capped) and serialized with HttpService:JSONEncode — no bespoke Lua encoding.
 		- The socket reconnects forever with capped exponential backoff + jitter.
@@ -32,11 +32,22 @@ end
 -- Configuration
 --==============================================================================--
 
-local BridgeURL = getgenv().BridgeURL or "localhost:16384"
+local RuntimeConfig = {}
+pcall(function()
+	if type(getgenv) == "function" then RuntimeConfig = getgenv() end
+end)
+
+local function boundedInteger(value, fallback, minimum, maximum)
+	local number = tonumber(value)
+	if number == nil or number ~= number then return fallback end
+	return math.clamp(math.floor(number), minimum, maximum)
+end
+
+local BridgeURL = RuntimeConfig.BridgeURL or "localhost:16384"
 -- Optional shared secret. When the server is started with
 -- ROBLOX_MCP_BRIDGE_TOKEN set, the connector must send this exact string or the
 -- bridge closes the socket. Leave nil/empty when the server runs unauthenticated.
-local BridgeToken = getgenv().BridgeToken
+local BridgeToken = RuntimeConfig.BridgeToken
 local PROTOCOL_VERSION = 1
 
 -- Reconnect backoff bounds (seconds).
@@ -46,8 +57,34 @@ local RECONNECT_MAX_DELAY = 30
 -- Value-encoding guards: keep a pathological return value from producing a giant
 -- or infinite payload.
 local ENCODE_MAX_DEPTH = 6
-local ENCODE_MAX_TABLE_ENTRIES = 1000
+local ENCODE_MAX_TABLE_ENTRIES = 500
 local ENCODE_MAX_STRING_LENGTH = 50000
+local ENCODE_MAX_KEY_LENGTH = 256
+local ENCODE_MAX_TOTAL_NODES = 5000
+local ENCODE_MAX_TOTAL_STRING_BYTES = 1024 * 1024
+
+-- Game-safety budgets. These are deliberately bounded even when overridden:
+-- supporting many agents means queueing fairly, never spawning unbounded work.
+local MAX_CONCURRENT_EVALS = boundedInteger(RuntimeConfig.MCPMaxConcurrentEvals, 2, 2, 8)
+local MAX_QUEUED_EVALS = boundedInteger(RuntimeConfig.MCPMaxQueuedEvals, 96, 8, 512)
+local MAX_QUEUED_SOURCE_BYTES = boundedInteger(
+	RuntimeConfig.MCPMaxQueuedSourceBytes,
+	2 * 1024 * 1024,
+	256 * 1024,
+	16 * 1024 * 1024
+)
+local NESTED_QUEUE_RESERVE = math.min(8, math.max(1, math.floor(MAX_QUEUED_EVALS / 10)))
+local MAX_RPC_BATCH_CALLS = boundedInteger(RuntimeConfig.MCPMaxRpcBatchCalls, 64, 8, 256)
+local MAX_PARALLEL_COROUTINES = boundedInteger(RuntimeConfig.MCPMaxParallelCoroutines, 64, 4, 256)
+local MAX_PUBSUB_HANDLERS_PER_CHANNEL = 32
+local MAX_PUBSUB_DISPATCH_QUEUE = 128
+local MAX_PUBSUB_WORKERS = 4
+local OUTPUT_BUFFER_LIMIT = boundedInteger(RuntimeConfig.MCPOutputBufferLimit, 256, 32, 2048)
+local OUTPUT_BATCH_LIMIT = boundedInteger(RuntimeConfig.MCPOutputBatchLimit, 50, 10, 200)
+local OUTPUT_MESSAGE_LIMIT = boundedInteger(RuntimeConfig.MCPOutputMessageLimit, 4096, 256, 16384)
+local OUTPUT_FLUSH_SECONDS = 0.25
+local SCRIPT_OUTPUT_LIMIT = 250
+local MAX_INBOUND_FRAME_BYTES = 8 * 1024 * 1024
 
 --==============================================================================--
 -- Services (guarded — every executor exposes these, but never assume)
@@ -230,7 +267,20 @@ end
 -- recurse (cycle-guarded, depth/size capped), scalars pass through.
 --==============================================================================--
 
-local function encodeValue(value, depth, seen)
+local function encodeString(value, budget)
+	local remaining = math.max(0, ENCODE_MAX_TOTAL_STRING_BYTES - budget.stringBytes)
+	if remaining == 0 then return "<result-string-budget>" end
+	local length = math.min(#value, ENCODE_MAX_STRING_LENGTH, remaining)
+	budget.stringBytes = budget.stringBytes + length
+	if length < #value then
+		return string.sub(value, 1, length) .. "… (truncated)"
+	end
+	return value
+end
+
+local function encodeValue(value, depth, seen, budget)
+	budget.nodes = budget.nodes + 1
+	if budget.nodes > ENCODE_MAX_TOTAL_NODES then return "<result-node-budget>" end
 	local kind = typeof(value)
 
 	if kind == "nil" then
@@ -242,19 +292,16 @@ local function encodeValue(value, depth, seen)
 		end
 		return value
 	elseif kind == "string" then
-		if #value > ENCODE_MAX_STRING_LENGTH then
-			return string.sub(value, 1, ENCODE_MAX_STRING_LENGTH) .. "… (truncated)"
-		end
-		return value
+		return encodeString(value, budget)
 	elseif kind == "Instance" then
 		local ok, full = pcall(function()
 			return value:GetFullName()
 		end)
-		return "Instance: " .. (ok and full or tostring(value))
+		return encodeString("Instance: " .. (ok and full or tostring(value)), budget)
 	elseif kind == "function" then
-		return "function: " .. tostring(value)
+		return encodeString("function: " .. tostring(value), budget)
 	elseif kind == "thread" then
-		return "thread: " .. tostring(value)
+		return encodeString("thread: " .. tostring(value), budget)
 	elseif kind == "table" then
 		if depth >= ENCODE_MAX_DEPTH then
 			return "<max-depth>"
@@ -283,7 +330,7 @@ local function encodeValue(value, depth, seen)
 			result = {}
 			local n = math.min(#value, ENCODE_MAX_TABLE_ENTRIES)
 			for i = 1, n do
-				result[i] = encodeValue(value[i], depth + 1, seen)
+				result[i] = encodeValue(value[i], depth + 1, seen, budget)
 			end
 			if #value > ENCODE_MAX_TABLE_ENTRIES then
 				result[n + 1] = "… (truncated)"
@@ -299,11 +346,11 @@ local function encodeValue(value, depth, seen)
 				-- JSON object keys must be strings.
 				local key
 				if typeof(k) == "string" then
-					key = k
+					key = string.sub(k, 1, ENCODE_MAX_KEY_LENGTH)
 				else
-					key = tostring(k)
+					key = string.sub(tostring(k), 1, ENCODE_MAX_KEY_LENGTH)
 				end
-				result[key] = encodeValue(v, depth + 1, seen)
+				result[key] = encodeValue(v, depth + 1, seen, budget)
 				entries += 1
 			end
 		end
@@ -312,12 +359,12 @@ local function encodeValue(value, depth, seen)
 		return result
 	else
 		-- Vector3, CFrame, Color3, UDim2, EnumItem, BrickColor, etc.
-		return tostring(value)
+		return encodeString(tostring(value), budget)
 	end
 end
 
 local function encodeForJson(value)
-	return encodeValue(value, 0, {})
+	return encodeValue(value, 0, {}, { nodes = 0, stringBytes = 0 })
 end
 
 --==============================================================================--
@@ -446,6 +493,38 @@ local function buildMcpTable(token)
 	-- rpc-batch frame.
 	local currentScheduler = nil
 
+	-- Split large batches into bounded chunks. This preserves every result while
+	-- preventing one mcp.all/parallel round from creating hundreds of host tasks.
+	local function dispatchBatch(calls, label)
+		local combined = {}
+		local first = 1
+		while first <= #calls do
+			if currentSend == nil then
+				return { ok = false, error = label .. ": bridge disconnected before batch dispatch" }
+			end
+			local chunk = {}
+			local last = math.min(#calls, first + MAX_RPC_BATCH_CALLS - 1)
+			for index = first, last do chunk[#chunk + 1] = calls[index] end
+			rpcCounter = rpcCounter + 1
+			local id = "b" .. tostring(rpcCounter)
+			pendingBatch[id] = { done = false, value = nil }
+			local ok, sent = pcall(function()
+				return currentSend({ type = "rpc-batch", id = id, token = token, calls = chunk })
+			end)
+			if not ok or sent == false then
+				pendingBatch[id] = nil
+				return { ok = false, error = label .. ": send failed" }
+			end
+			local outcome = awaitBatch(id, 60000)
+			if not outcome.ok then return outcome end
+			for _, result in ipairs(outcome.results or {}) do
+				combined[#combined + 1] = result
+			end
+			first = last + 1
+		end
+		return { ok = true, results = combined }
+	end
+
 	local function call(name, args)
 		if name == "script" then
 			error("mcp.script is disabled (no recursion).", 0)
@@ -468,12 +547,12 @@ local function buildMcpTable(token)
 		rpcCounter = rpcCounter + 1
 		local id = "r" .. tostring(rpcCounter)
 		pendingRpc[id] = { done = false, value = nil }
-		local ok, sendErr = pcall(function()
-			currentSend({ type = "rpc-call", id = id, token = token, tool = name, args = args or {} })
+		local ok, sent = pcall(function()
+			return currentSend({ type = "rpc-call", id = id, token = token, tool = name, args = args or {} })
 		end)
-		if not ok then
+		if not ok or sent == false then
 			pendingRpc[id] = nil
-			error("mcp." .. tostring(name) .. ": send failed: " .. tostring(sendErr), 0)
+			error("mcp." .. tostring(name) .. ": send failed", 0)
 		end
 		local result = awaitRpc(id, 30000)
 		if not result.ok then
@@ -517,17 +596,7 @@ local function buildMcpTable(token)
 		end
 		if #calls == 0 then return {} end
 
-		rpcCounter = rpcCounter + 1
-		local id = "b" .. tostring(rpcCounter)
-		pendingBatch[id] = { done = false, value = nil }
-		local ok, sendErr = pcall(function()
-			currentSend({ type = "rpc-batch", id = id, token = token, calls = calls })
-		end)
-		if not ok then
-			pendingBatch[id] = nil
-			error("mcp.all: send failed: " .. tostring(sendErr), 0)
-		end
-		local outcome = awaitBatch(id, 60000)
+		local outcome = dispatchBatch(calls, "mcp.all")
 		if not outcome.ok then
 			error("mcp.all -> " .. tostring(outcome.error), 0)
 		end
@@ -591,6 +660,12 @@ local function buildMcpTable(token)
 		-- trivial functions that call() the named tool, so mixed forms work too.
 		local cos = {}
 		for k, v in pairs(spec) do
+			if #cos >= MAX_PARALLEL_COROUTINES then
+				error(string.format(
+					"mcp.parallel: capped at %d coroutines; split this workload into smaller rounds",
+					MAX_PARALLEL_COROUTINES
+				), 0)
+			end
 			local fn
 			if type(v) == "function" then
 				fn = v
@@ -671,18 +746,7 @@ local function buildMcpTable(token)
 			for i, c in ipairs(markers) do
 				calls[i] = { key = "p" .. i, tool = camelToKebab(c.pending.tool), args = c.pending.args }
 			end
-			rpcCounter = rpcCounter + 1
-			local id = "b" .. tostring(rpcCounter)
-			pendingBatch[id] = { done = false, value = nil }
-			local sendOk, sendErr = pcall(function()
-				currentSend({ type = "rpc-batch", id = id, token = token, calls = calls })
-			end)
-			if not sendOk then
-				pendingBatch[id] = nil
-				for _, c in ipairs(markers) do setError(c, "mcp.parallel: send failed: " .. tostring(sendErr)) end
-				break
-			end
-			local outcome = awaitBatch(id, 60000)
+			local outcome = dispatchBatch(calls, "mcp.parallel")
 			if not outcome.ok then
 				for _, c in ipairs(markers) do setError(c, outcome.error or "mcp.parallel: batch failed") end
 				break
@@ -733,7 +797,9 @@ local function buildMcpTable(token)
 		if currentSend == nil then
 			error("mcp.publish: bridge socket is not connected.", 0)
 		end
-		currentSend({ type = "pubsub-publish", channel = channel, payload = payload })
+		if currentSend({ type = "pubsub-publish", channel = channel, payload = payload }) == false then
+			error("mcp.publish: send failed", 0)
+		end
 	end
 	-- Subscribe to a channel; `handler` is called with (payload, fromClientId)
 	-- when another client publishes. Returns an unsubscribe function. Multiple
@@ -753,6 +819,12 @@ local function buildMcpTable(token)
 			list = {}
 			pubsubHandlers[channel] = list
 			currentSend({ type = "pubsub-subscribe", channel = channel })
+		end
+		if #list >= MAX_PUBSUB_HANDLERS_PER_CHANNEL then
+			error(string.format(
+				"mcp.subscribe: channel handler cap reached (%d)",
+				MAX_PUBSUB_HANDLERS_PER_CHANNEL
+			), 0)
 		end
 		list[#list + 1] = handler
 		-- Returned unsubscribe drops just this handler; if it's the last, also
@@ -807,7 +879,13 @@ end
 -- Run a single eval op and return an OpResult-shaped table:
 --   { ok = true, value = <encoded first return value> }
 --   { ok = false, error = <message>, kind = "runtime" | "timeout" }
-local function runEval(op)
+local function truncateText(value, limit)
+	local text = tostring(value)
+	if #text <= limit then return text end
+	return string.sub(text, 1, math.max(1, limit - 18)) .. "... [truncated]"
+end
+
+local function runEval(op, isConnectionAlive)
 	local source = op.source
 
 	-- Wipe the persistent VM environment and return immediately.
@@ -833,6 +911,7 @@ local function runEval(op)
 	-- layered over the persistent VM env (writes there land back in the VM env so
 	-- user globals still survive across runs).
 	local scriptOutput = nil
+	local scriptOutputDropped = 0
 	if typeof(op.scriptToken) == "string" and op.scriptToken ~= "" then
 		local baseEnv = (op.env == "vm") and getVmEnv() or freshVmEnv()
 		scriptOutput = {}
@@ -843,25 +922,32 @@ local function runEval(op)
 				local n = select("#", ...)
 				local parts = (table.create and table.create(n)) or {}
 				for i = 1, n do parts[i] = tostring((select(i, ...))) end
-				local line = table.concat(parts, "\t")
-				if #scriptOutput < 1000 then
+				local line = truncateText(table.concat(parts, "\t"), OUTPUT_MESSAGE_LIMIT)
+				if #scriptOutput < SCRIPT_OUTPUT_LIMIT then
 					scriptOutput[#scriptOutput + 1] = line
+					-- Also push as a tagged frame so the dashboard can filter this run.
+					if pushOutput then
+						pushOutput({
+							kind = kind,
+							message = line,
+							source = "script",
+							scriptToken = op.scriptToken,
+						})
+					end
+					if markRecentScript then markRecentScript(line) end
+					pcall(real, ...)
+				else
+					scriptOutputDropped = scriptOutputDropped + 1
+					if scriptOutputDropped == 1 then
+						local notice = string.format("[connector] script output capped at %d lines", SCRIPT_OUTPUT_LIMIT)
+						scriptOutput[SCRIPT_OUTPUT_LIMIT] = notice
+						if pushOutput then
+							pushOutput({ kind = "warn", message = notice, source = "script", scriptToken = op.scriptToken })
+						end
+						if markRecentScript then markRecentScript(notice) end
+						pcall(real, notice)
+					end
 				end
-				-- Also push as a tagged frame so the dashboard Output tab can
-				-- filter to this specific script run (scriptToken-scoped). The
-				-- LogService tap below will fire for the real_print call we make
-				-- on the next line — markRecentScript marks this exact message
-				-- so the tap can skip the duplicate.
-				if pushOutput then
-					pushOutput({
-						kind = kind,
-						message = line,
-						source = "script",
-						scriptToken = op.scriptToken,
-					})
-				end
-				if markRecentScript then markRecentScript(line) end
-				pcall(real, ...)
 			end
 		end
 		local runEnv = setmetatable(
@@ -908,6 +994,10 @@ local function runEval(op)
 
 	if deadline then
 		while not finished and os.clock() < deadline do
+			if isConnectionAlive and not isConnectionAlive() then
+				pcall(task.cancel, worker)
+				return { ok = false, error = "bridge disconnected during execution.", kind = "runtime" }
+			end
 			task.wait(0.02)
 		end
 		if not finished then
@@ -921,6 +1011,10 @@ local function runEval(op)
 	else
 		-- No deadline: yield until the worker resolves.
 		while not finished do
+			if isConnectionAlive and not isConnectionAlive() then
+				pcall(task.cancel, worker)
+				return { ok = false, error = "bridge disconnected during execution.", kind = "runtime" }
+			end
 			task.wait(0.02)
 		end
 	end
@@ -929,7 +1023,11 @@ local function runEval(op)
 		-- In script-tool mode, a runtime error is still returned as a regular value
 		-- so the AI sees its captured output alongside the failure.
 		if scriptOutput ~= nil then
-			local pkOk, pkValue = pcall(encodeForJson, { error = "runtime error: " .. tostring(runErr), output = scriptOutput })
+			local pkOk, pkValue = pcall(encodeForJson, {
+				error = "runtime error: " .. tostring(runErr),
+				output = scriptOutput,
+				outputDropped = scriptOutputDropped,
+			})
 			if pkOk then
 				return { ok = true, value = pkValue }
 			end
@@ -942,7 +1040,11 @@ local function runEval(op)
 
 	-- Script-tool mode: package the user's return value with the captured output.
 	if scriptOutput ~= nil then
-		local pkOk, pkValue = pcall(encodeForJson, { result = firstValue, output = scriptOutput })
+		local pkOk, pkValue = pcall(encodeForJson, {
+			result = firstValue,
+			output = scriptOutput,
+			outputDropped = scriptOutputDropped,
+		})
 		if pkOk then
 			return { ok = true, value = pkValue }
 		end
@@ -1043,18 +1145,153 @@ local function runConnection()
 
 	local function send(message)
 		if not connected then
-			return
+			return false
 		end
 		local payload = jsonEncode(message)
 		if payload == nil then
-			return
+			return false
 		end
-		pcall(function()
+		local ok = pcall(function()
 			socket:Send(payload)
 		end)
+		if not ok then
+			connected = false
+			return false
+		end
+		return true
 	end
 	-- Expose this connection's send to module-level features (mcp.* RPC).
 	currentSend = send
+
+	-- Bounded eval scheduler. Normal calls share a small worker pool; a parent
+	-- script runs exclusively in the normal lane while one slot stays reserved
+	-- for the nested mcp.* evals it is waiting on.
+	local evalQueue = {}
+	local evalQueuedBytes = 0
+	local evalActive = 0
+	local activeScriptParents = 0
+	local pumpingEvals = false
+	local pumpEvalQueue
+
+	local function isScriptParent(job)
+		return job.op.priority ~= "nested"
+			and typeof(job.op.scriptToken) == "string"
+			and job.op.scriptToken ~= ""
+	end
+
+	local function nextEvalIndex()
+		if evalActive >= MAX_CONCURRENT_EVALS then return nil end
+		for index, job in ipairs(evalQueue) do
+			if job.op.priority == "nested" then return index end
+		end
+		if activeScriptParents > 0 then return nil end
+		for index, job in ipairs(evalQueue) do
+			if isScriptParent(job) then
+				if evalActive <= MAX_CONCURRENT_EVALS - 2 then return index end
+				return nil
+			end
+		end
+		return #evalQueue > 0 and 1 or nil
+	end
+
+	pumpEvalQueue = function()
+		if pumpingEvals or not connected then return end
+		pumpingEvals = true
+		while connected and evalActive < MAX_CONCURRENT_EVALS do
+			local index = nextEvalIndex()
+			if index == nil then break end
+			local job = table.remove(evalQueue, index)
+			if job == nil then break end
+			evalQueuedBytes = math.max(0, evalQueuedBytes - job.sourceBytes)
+			local elapsedMs = math.max(0, (os.clock() - job.enqueuedAt) * 1000)
+			local originalTimeout = tonumber(job.op.timeoutMs) or 30000
+			if elapsedMs >= originalTimeout then
+				send({
+					type = "result",
+					id = job.id,
+					result = { ok = false, error = "eval expired in connector queue", kind = "timeout" },
+				})
+			else
+				job.op.timeoutMs = math.max(1, math.floor(originalTimeout - elapsedMs))
+				evalActive = evalActive + 1
+				local parent = isScriptParent(job)
+				if parent then activeScriptParents = activeScriptParents + 1 end
+				task.spawn(function()
+					local ok, result = pcall(runEval, job.op, function() return connected end)
+					if not ok then
+						result = { ok = false, error = "connector eval guard: " .. tostring(result), kind = "runtime" }
+					end
+					if connected then send({ type = "result", id = job.id, result = result }) end
+					evalActive = math.max(0, evalActive - 1)
+					if parent then activeScriptParents = math.max(0, activeScriptParents - 1) end
+					pumpEvalQueue()
+				end)
+			end
+		end
+		pumpingEvals = false
+	end
+
+	local function enqueueEval(id, op)
+		local priority = op.priority == "nested" and "nested" or "normal"
+		op.priority = priority
+		local sourceBytes = typeof(op.source) == "string" and #op.source or 0
+		local queueLimit = priority == "nested"
+			and MAX_QUEUED_EVALS
+			or math.max(1, MAX_QUEUED_EVALS - NESTED_QUEUE_RESERVE)
+		local byteLimit = priority == "nested"
+			and MAX_QUEUED_SOURCE_BYTES
+			or math.floor(MAX_QUEUED_SOURCE_BYTES * 0.75)
+		if #evalQueue >= queueLimit or evalQueuedBytes + sourceBytes > byteLimit then
+			send({
+				type = "result",
+				id = id,
+				result = {
+					ok = false,
+					error = string.format(
+						"connector eval queue is full (%d active, %d queued); reduce parallel fan-out",
+						evalActive,
+						#evalQueue
+					),
+					kind = "overloaded",
+				},
+			})
+			return
+		end
+		evalQueue[#evalQueue + 1] = {
+			id = id,
+			op = op,
+			sourceBytes = sourceBytes,
+			enqueuedAt = os.clock(),
+		}
+		evalQueuedBytes = evalQueuedBytes + sourceBytes
+		pumpEvalQueue()
+	end
+
+	-- Pub/sub callbacks are user code and may yield forever, so dispatch them
+	-- through another bounded pool instead of spawning one thread per callback.
+	local pubsubQueue = {}
+	local pubsubActive = 0
+	local pumpingPubsub = false
+	local pumpPubsub
+	pumpPubsub = function()
+		if pumpingPubsub or not connected then return end
+		pumpingPubsub = true
+		while connected and pubsubActive < MAX_PUBSUB_WORKERS and #pubsubQueue > 0 do
+			local job = table.remove(pubsubQueue, 1)
+			pubsubActive = pubsubActive + 1
+			task.spawn(function()
+				pcall(job.fn, job.payload, job.fromClientId)
+				pubsubActive = math.max(0, pubsubActive - 1)
+				pumpPubsub()
+			end)
+		end
+		pumpingPubsub = false
+	end
+	local function enqueuePubsub(fn, payload, fromClientId)
+		if #pubsubQueue >= MAX_PUBSUB_DISPATCH_QUEUE then return end
+		pubsubQueue[#pubsubQueue + 1] = { fn = fn, payload = payload, fromClientId = fromClientId }
+		pumpPubsub()
+	end
 
 	-- Dispatch one decoded inbound message. Always pcall-guarded by the caller.
 	local function handleMessage(message)
@@ -1082,8 +1319,7 @@ local function runConnection()
 				return
 			end
 			if op.kind == "eval" then
-				local result = runEval(op)
-				send({ type = "result", id = id, result = result })
+				enqueueEval(id, op)
 			else
 				send({
 					type = "result",
@@ -1109,14 +1345,13 @@ local function runConnection()
 			end
 			return
 		elseif mtype == "pubsub-message" then
-			-- Fanout to every handler registered on this channel; each runs on
-			-- its own task.spawn so a slow/blocking handler can't stall the
-			-- socket reader or other handlers.
+			-- Fanout through the bounded callback pool so user handlers cannot
+			-- create an unbounded task storm.
 			local frame = message.frame or {}
 			local list = pubsubHandlers[frame.channel]
 			if list ~= nil then
 				for _, fn in ipairs(list) do
-					task.spawn(function() pcall(fn, frame.payload, frame.fromClientId) end)
+					enqueuePubsub(fn, frame.payload, frame.fromClientId)
 				end
 			end
 			return
@@ -1124,17 +1359,14 @@ local function runConnection()
 		-- Unknown message types are ignored (forward-compatible).
 	end
 
-	-- Wire up message handling: each message runs on its own thread so handling
-	-- is concurrent and a slow/blocking op never stalls the socket reader.
+	-- Signal callbacks already run independently in Roblox. Handling is kept
+	-- constant-time: evals and pub/sub user code are only enqueued here.
 	pcall(function()
 		socket.OnMessage:Connect(function(raw)
-			task.spawn(function()
-				local decoded = jsonDecode(raw)
-				if decoded == nil then
-					return
-				end
-				pcall(handleMessage, decoded)
-			end)
+			if typeof(raw) == "string" and #raw > MAX_INBOUND_FRAME_BYTES then return end
+			local decoded = jsonDecode(raw)
+			if decoded == nil then return end
+			pcall(handleMessage, decoded)
 		end)
 	end)
 
@@ -1151,13 +1383,35 @@ local function runConnection()
 	-- in the game, including from VM scripts) and flush batched lines to the server.
 	-- Best-effort and fully guarded; a failure here never affects the connection.
 	local outBuf = {}
+	local outHead, outTail, outSize, outDropped = 1, 0, 0, 0
 	local outConn = nil
+	local streamOutput = RuntimeConfig.MCPStreamOutput ~= false
+	local function appendOutput(entry)
+		if not streamOutput or entry == nil then return end
+		if outSize >= OUTPUT_BUFFER_LIMIT then
+			outDropped = outDropped + 1
+			return
+		end
+		entry.message = truncateText(entry.message or "", OUTPUT_MESSAGE_LIMIT)
+		outTail = (outTail % OUTPUT_BUFFER_LIMIT) + 1
+		outBuf[outTail] = entry
+		outSize = outSize + 1
+	end
+	local function takeOutputBatch()
+		local batch = {}
+		local count = math.min(outSize, OUTPUT_BATCH_LIMIT)
+		for _ = 1, count do
+			batch[#batch + 1] = outBuf[outHead]
+			outBuf[outHead] = nil
+			outHead = (outHead % OUTPUT_BUFFER_LIMIT) + 1
+			outSize = outSize - 1
+		end
+		return batch
+	end
 	-- Expose a module-visible appender so the per-script print/warn wrappers can
 	-- also feed this buffer (with source="script" + scriptToken metadata).
 	pushOutput = function(entry)
-		if entry and #outBuf < 500 then
-			outBuf[#outBuf + 1] = entry
-		end
+		appendOutput(entry)
 	end
 	-- Tiny rolling buffer of recently script-emitted lines, keyed by message
 	-- text + os.clock(). The LogService tap fires for the real_print() that the
@@ -1186,6 +1440,7 @@ local function runConnection()
 		return false
 	end
 	pcall(function()
+		if not streamOutput then return end
 		local LogService = safeService("LogService")
 		if LogService == nil then
 			return
@@ -1211,27 +1466,33 @@ local function runConnection()
 			return "print"
 		end
 		outConn = LogService.MessageOut:Connect(function(message, messageType)
-			local text = tostring(message)
+			local text = truncateText(message, OUTPUT_MESSAGE_LIMIT)
 			-- Skip the LogService duplicate when a script wrapper just emitted
 			-- the same line as a tagged "script" frame.
 			if wasRecentlyScripted and wasRecentlyScripted(text) then return end
-			if #outBuf < 500 then
-				outBuf[#outBuf + 1] = {
-					kind = classify(messageType),
-					message = text,
-					source = "game",
-				}
-			end
+			appendOutput({
+				kind = classify(messageType),
+				message = text,
+				source = "game",
+			})
 		end)
 	end)
 
-	-- Block until the socket closes, flushing buffered output ~10x/second.
+	-- Block until the socket closes. Flush a fixed-size slice at a modest rate;
+	-- a chatty game cannot monopolize JSON encoding or WebSocket bandwidth.
 	while connected do
-		task.wait(0.1)
-		if #outBuf > 0 then
-			local batch = outBuf
-			outBuf = {}
-			send({ type = "event", channel = "output", data = { entries = batch } })
+		task.wait(OUTPUT_FLUSH_SECONDS)
+		if outSize > 0 or outDropped > 0 then
+			local batch = takeOutputBatch()
+			local dropped = outDropped
+			outDropped = 0
+			if not send({
+				type = "event",
+				channel = "output",
+				data = { entries = batch, dropped = dropped },
+			}) then
+				break
+			end
 		end
 	end
 
@@ -1246,13 +1507,16 @@ local function runConnection()
 	pushOutput = nil
 	markRecentScript = nil
 	wasRecentlyScripted = nil
+	evalQueue = {}
+	pubsubQueue = {}
 	-- Drop pubsub handlers so a reconnect starts clean and stale handlers do not
 	-- fire against a different game.
 	pubsubHandlers = {}
 	-- Wake any mcp.all() awaiters with a clean disconnected outcome.
-	for _, pending in pairs(pendingBatch) do
+	for id, pending in pairs(pendingBatch) do
 		pending.value = pending.value or {}
 		pending.done = true
+		pendingBatch[id] = nil
 	end
 	for id, pending in pairs(pendingRpc) do
 		pending.value = { ok = false, error = "bridge disconnected" }

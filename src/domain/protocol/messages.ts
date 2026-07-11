@@ -55,12 +55,18 @@ export interface ClientOp {
    * The token is minted server-side per-run and only the script's env sees it.
    */
   readonly scriptToken?: string;
+  /** Optional scheduling lane; old connectors safely treat omission as normal. */
+  readonly priority?: "normal" | "nested";
 }
 
 /** The outcome of a {@link ClientOp}. */
 export type OpResult =
   | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly error: string; readonly kind?: "timeout" | "runtime" };
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly kind?: "timeout" | "runtime" | "overloaded";
+    };
 
 /** Outcome of an `rpc-call` (tool invocation made from inside a running script). */
 export type RpcResult =
@@ -93,7 +99,11 @@ export type ServerMessage =
   | { readonly type: "op"; readonly id: string; readonly op: ClientOp }
   | { readonly type: "ping"; readonly id: string }
   | { readonly type: "rpc-result"; readonly id: string; readonly result: RpcResult }
-  | { readonly type: "rpc-batch-result"; readonly id: string; readonly results: readonly RpcBatchResultEntry[] }
+  | {
+      readonly type: "rpc-batch-result";
+      readonly id: string;
+      readonly results: readonly RpcBatchResultEntry[];
+    }
   | { readonly type: "pubsub-message"; readonly frame: PubSubFrame };
 
 /** Connector -> server. */

@@ -149,6 +149,13 @@ const CLASSIFICATION_CASES: readonly {
     },
   },
   {
+    label: "bridge overload",
+    cause: "bridge-overloaded",
+    failure: {
+      error: { code: "BRIDGE_OVERLOADED", message: "Client eval queue is full" },
+    },
+  },
+  {
     label: "timeout",
     cause: "timeout",
     failure: { error: { code: "EXECUTION_TIMEOUT", message: "Execution timed out" } },

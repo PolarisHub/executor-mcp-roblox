@@ -129,10 +129,21 @@ describe("BridgeServer (integration)", () => {
     }
   });
 
-  async function startServer(opts: { authToken?: string | null } = {}): Promise<{ bridge: BridgeServer; port: number }> {
+  async function startServer(
+    opts: {
+      authToken?: string | null;
+      bridge?: Partial<AppConfig["bridge"]>;
+    } = {},
+  ): Promise<{ bridge: BridgeServer; port: number }> {
     const config = bridgeConfig();
-    if (opts.authToken !== undefined) {
-      Object.assign(config, { bridge: { ...config.bridge, authToken: opts.authToken } });
+    if (opts.authToken !== undefined || opts.bridge) {
+      Object.assign(config, {
+        bridge: {
+          ...config.bridge,
+          ...opts.bridge,
+          ...(opts.authToken !== undefined ? { authToken: opts.authToken } : {}),
+        },
+      });
     }
     const bridge = new BridgeServer({
       config,
@@ -219,6 +230,241 @@ describe("BridgeServer (integration)", () => {
     await waitFor(() => bridge.list().length === 0);
   });
 
+  it("bounds concurrent evals and drains queued work without flooding the client", async () => {
+    const { bridge, port } = await startServer({
+      bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 16 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+    const received: Extract<ServerMessage, { type: "op" }>[] = [];
+    ws.on("message", (raw) => {
+      const message = JSON.parse(raw.toString()) as ServerMessage;
+      if (message.type === "op") received.push(message);
+    });
+
+    const runs = Array.from({ length: 6 }, (_, index) =>
+      bridge.eval(clientId, { source: `return ${index}`, timeoutMs: 5000 }),
+    );
+    await waitFor(() => received.length === 2);
+    expect(bridge.loadSnapshot()).toMatchObject({ activeEvals: 2, queuedEvals: 4 });
+
+    let replied = 0;
+    while (replied < runs.length) {
+      await waitFor(() => received.length > replied);
+      const op = received[replied]!;
+      ws.send(
+        JSON.stringify({
+          type: "result",
+          id: op.id,
+          result: { ok: true, value: replied },
+        } satisfies ClientMessage),
+      );
+      replied += 1;
+    }
+    await expect(Promise.all(runs)).resolves.toEqual([0, 1, 2, 3, 4, 5]);
+    expect(bridge.loadSnapshot()).toMatchObject({ activeEvals: 0, queuedEvals: 0 });
+  });
+
+  it("sustains a 100-call multi-agent burst while keeping client concurrency bounded", async () => {
+    const { bridge, port } = await startServer({
+      bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 128 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+    let inFlight = 0;
+    let peakInFlight = 0;
+    ws.on("message", (raw) => {
+      const message = JSON.parse(raw.toString()) as ServerMessage;
+      if (message.type !== "op") return;
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      setTimeout(() => {
+        inFlight -= 1;
+        ws.send(
+          JSON.stringify({
+            type: "result",
+            id: message.id,
+            result: { ok: true, value: message.op.source },
+          } satisfies ClientMessage),
+        );
+      }, 2);
+    });
+
+    const runs = Array.from({ length: 100 }, (_, index) =>
+      bridge.eval(clientId, { source: `return ${index}`, timeoutMs: 5000 }),
+    );
+    const values = await Promise.all(runs);
+
+    expect(values).toHaveLength(100);
+    expect(peakInFlight).toBeLessThanOrEqual(2);
+    expect(bridge.loadSnapshot()).toMatchObject({ activeEvals: 0, queuedEvals: 0 });
+  });
+
+  it("round-robins queued agents instead of letting one noisy session monopolize dispatch", async () => {
+    const { bridge, port } = await startServer({
+      bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 32 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+    const received: Extract<ServerMessage, { type: "op" }>[] = [];
+    ws.on("message", (raw) => {
+      const message = JSON.parse(raw.toString()) as ServerMessage;
+      if (message.type === "op") received.push(message);
+    });
+
+    const runs = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        bridge.eval(clientId, {
+          source: `return 'agent-a-${index}'`,
+          schedulerKey: "agent-a",
+          timeoutMs: 5000,
+        }),
+      ),
+      ...Array.from({ length: 2 }, (_, index) =>
+        bridge.eval(clientId, {
+          source: `return 'agent-b-${index}'`,
+          schedulerKey: "agent-b",
+          timeoutMs: 5000,
+        }),
+      ),
+    ];
+    await waitFor(() => received.length === 2);
+    expect(received.every((message) => message.op.source.includes("agent-a"))).toBe(true);
+
+    ws.send(
+      JSON.stringify({
+        type: "result",
+        id: received[0]!.id,
+        result: { ok: true, value: "done" },
+      } satisfies ClientMessage),
+    );
+    await waitFor(() => received.length === 3);
+    expect(received[2]!.op.source).toContain("agent-b");
+
+    const replied = new Set([received[0]!.id]);
+    while (replied.size < runs.length) {
+      const next = received.find((message) => !replied.has(message.id));
+      if (!next) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        continue;
+      }
+      replied.add(next.id);
+      ws.send(
+        JSON.stringify({
+          type: "result",
+          id: next.id,
+          result: { ok: true, value: "done" },
+        } satisfies ClientMessage),
+      );
+    }
+    await expect(Promise.all(runs)).resolves.toHaveLength(6);
+  });
+
+  it("reserves a nested lane so a parent script cannot deadlock on mcp tool work", async () => {
+    const { bridge, port } = await startServer({
+      bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 16 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+    const received: Extract<ServerMessage, { type: "op" }>[] = [];
+    ws.on("message", (raw) => {
+      const message = JSON.parse(raw.toString()) as ServerMessage;
+      if (message.type === "op") received.push(message);
+    });
+
+    const parent = bridge.eval(clientId, {
+      source: "return mcp.getPlayers()",
+      scriptToken: "parent-token",
+      timeoutMs: 5000,
+    });
+    const ordinary = bridge.eval(clientId, { source: "return 'ordinary'", timeoutMs: 5000 });
+    const nested = bridge.eval(clientId, {
+      source: "return 'nested'",
+      priority: "nested",
+      timeoutMs: 5000,
+    });
+
+    await waitFor(() => received.length === 2);
+    expect(received.map((message) => message.op.priority)).toEqual(["normal", "nested"]);
+    expect(received.some((message) => message.op.source.includes("ordinary"))).toBe(false);
+
+    const nestedOp = received.find((message) => message.op.priority === "nested")!;
+    ws.send(
+      JSON.stringify({
+        type: "result",
+        id: nestedOp.id,
+        result: { ok: true, value: "nested" },
+      } satisfies ClientMessage),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(received).toHaveLength(2);
+
+    const parentOp = received.find((message) => message.op.scriptToken === "parent-token")!;
+    ws.send(
+      JSON.stringify({
+        type: "result",
+        id: parentOp.id,
+        result: { ok: true, value: "parent" },
+      } satisfies ClientMessage),
+    );
+    await waitFor(() => received.length === 3);
+    const ordinaryOp = received[2]!;
+    expect(ordinaryOp.op.source).toContain("ordinary");
+    ws.send(
+      JSON.stringify({
+        type: "result",
+        id: ordinaryOp.id,
+        result: { ok: true, value: "ordinary" },
+      } satisfies ClientMessage),
+    );
+
+    await expect(Promise.all([parent, ordinary, nested])).resolves.toEqual([
+      "parent",
+      "ordinary",
+      "nested",
+    ]);
+  });
+
+  it("rejects excess queued work with a retryable overload error", async () => {
+    const { bridge, port } = await startServer({
+      bridge: { maxConcurrentEvals: 2, maxQueuedEvals: 3 },
+    });
+    const ws = await openSocket(port);
+    sockets.push(ws);
+    ws.send(helloMessage());
+    await waitForType(ws, "welcome");
+    await waitFor(() => bridge.list().length === 1);
+    const clientId = bridge.list()[0]!.id;
+    const held = Array.from({ length: 4 }, (_, index) =>
+      bridge.eval(clientId, { source: `return ${index}`, timeoutMs: 10000 }),
+    );
+    await waitFor(() => bridge.loadSnapshot().activeEvals === 2);
+
+    await expect(
+      bridge.eval(clientId, { source: "return 'overflow'", timeoutMs: 10000 }),
+    ).rejects.toMatchObject({ code: "BRIDGE_OVERLOADED", retryable: true });
+    expect(bridge.loadSnapshot().rejectedEvals).toBe(1);
+
+    ws.terminate();
+    await Promise.allSettled(held);
+  });
+
   it("rejects a hello whose token does not match the server's authToken", async () => {
     const { bridge, port } = await startServer({ authToken: "secret-x" });
     const ws = await openSocket(port);
@@ -297,7 +543,7 @@ describe("BridgeServer (integration)", () => {
   });
 
   it("rejects rpc-call with a bad token", async () => {
-    const { bridge, port } = await startServerWithScripting({ "x": 1 });
+    const { bridge, port } = await startServerWithScripting({ x: 1 });
     const ws = await openSocket(port);
     sockets.push(ws);
     ws.send(helloMessage());

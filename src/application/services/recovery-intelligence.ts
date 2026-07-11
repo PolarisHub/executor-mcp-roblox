@@ -8,6 +8,7 @@ export const RECOVERY_CAUSES = [
   "stale-or-missing-instance-path",
   "missing-executor-capability",
   "custom-character-hierarchy",
+  "bridge-overloaded",
   "timeout",
   "invalid-schema-or-input",
   "permission-or-mutation-blocked",
@@ -163,6 +164,19 @@ const FAILURE_RULES: readonly FailureRule[] = [
     ],
   },
   {
+    cause: "bridge-overloaded",
+    message:
+      "The shared Roblox bridge reached a bounded concurrency, queue, or memory budget and rejected work to protect the game.",
+    confidence: 0.98,
+    recoverable: true,
+    patterns: [
+      /\bbridge_overloaded\b/i,
+      /bridge.*(?:overloaded|queue.*full|capacity)/i,
+      /(?:eval|rpc).*queue.*(?:full|capacity|saturated)/i,
+      /too many (?:queued|concurrent).*(?:eval|operation|request|tool call)/i,
+    ],
+  },
+  {
     cause: "timeout",
     message: "The operation exceeded its execution or transport deadline.",
     confidence: 0.96,
@@ -231,6 +245,7 @@ const PREFERRED_FALLBACKS: Readonly<Record<RecoveryCause, readonly string[]>> = 
     "get-local-player-info",
     "script",
   ],
+  "bridge-overloaded": ["bridge-status", "agent-context", "tool-plan"],
   timeout: ["bridge-status", "agent-context", "tool-schema", "tool-plan"],
   "invalid-schema-or-input": ["tool-schema", "tool-plan"],
   "permission-or-mutation-blocked": ["tool-schema", "agent-run", "agent-context"],
@@ -246,6 +261,7 @@ const CAUSE_QUERIES: Readonly<Record<RecoveryCause, string>> = {
   "stale-or-missing-instance-path": "search resolve verify live instance path and tree",
   "missing-executor-capability": "test executor capabilities and find supported alternative",
   "custom-character-hierarchy": "discover custom player character humanoid root model",
+  "bridge-overloaded": "inspect bridge queue load and reduce parallel Roblox work",
   timeout: "diagnose timeout bridge state and reduce operation scope",
   "invalid-schema-or-input": "inspect tool schema arguments and plan valid input",
   "permission-or-mutation-blocked": "inspect mutation approval and read-only state",
@@ -613,6 +629,16 @@ function retryPolicy(
       conditions: ["Choose a supported fallback tool or operation."],
     };
   }
+  if (cause === "bridge-overloaded") {
+    return {
+      strategy: "after-state-check",
+      maxAttempts: 1,
+      retrySameInput: true,
+      conditions: [
+        "Wait for bridge-status to report a drained queue, then retry once with lower parallel fan-out and jitter.",
+      ],
+    };
+  }
   if (cause === "permission-or-mutation-blocked" || cause === "unknown") {
     return {
       strategy: "manual-review",
@@ -702,6 +728,16 @@ function nextActions(
       );
       add(
         "Use the bounded recoveryScript only when game-specific discovery needs custom adaptation.",
+      );
+      break;
+    case "bridge-overloaded":
+      useIfAvailable(
+        "bridge-status",
+        "Call bridge-status and wait until queuedEvals is low before retrying.",
+      );
+      add("Reduce mcp.parallel/script-fanout width; the bridge will preserve queued work fairly.");
+      add(
+        "Retry once after a short randomized delay instead of launching an immediate retry storm.",
       );
       break;
     case "timeout":

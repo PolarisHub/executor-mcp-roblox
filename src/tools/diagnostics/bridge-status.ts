@@ -11,7 +11,8 @@ export default defineTool({
     "active client, or why none resolves); and the full roster of connected Roblox executor clients (clientId, " +
     "username, userId, placeId, executor). Use this to debug multi-session routing — e.g. to confirm that your " +
     "session and another session are pointed at different games, or to see whether any client is connected at all. " +
-    "Returns { session, active, clients } and never runs Luau.",
+    "Includes live per-client queue/concurrency pressure and rejected-overload counts when the transport exposes them. " +
+    "Returns { session, active, bridgeLoad, clients } and never runs Luau.",
   category: "Diagnostics",
   requiresClient: false,
   input: z.object({}),
@@ -22,6 +23,8 @@ export default defineTool({
       selection: ctx.session.selection,
     };
     const active = toResolutionView(ctx.session.resolve());
+    const bridgeLoad = ctx.clients.loadSnapshot?.();
+    const loadByClient = new Map(bridgeLoad?.clients.map((load) => [load.clientId, load]));
     const clients = ctx.clients.list().map((client) => {
       const view = toClientView(client);
       return {
@@ -30,16 +33,20 @@ export default defineTool({
         userId: view.userId,
         placeId: view.placeId,
         executor: view.executor,
+        ...(loadByClient.get(client.id) ? { load: loadByClient.get(client.id) } : {}),
       };
     });
 
+    const pressure = bridgeLoad
+      ? ` Load: ${bridgeLoad.activeEvals} active, ${bridgeLoad.queuedEvals} queued, ${bridgeLoad.saturatedClients} saturated, ${bridgeLoad.rejectedEvals} rejected.`
+      : "";
     const summary =
       clients.length === 0
-        ? `Session ${session.label}: no Roblox clients connected.`
+        ? `Session ${session.label}: no Roblox clients connected.${pressure}`
         : `Session ${session.label}: ${clients.length} client(s) connected; resolves to ${
             active.status === "resolved" ? active.client.clientId : active.status
-          }.`;
+          }.${pressure}`;
 
-    return { data: { session, active, clients }, summary };
+    return { data: { session, active, bridgeLoad: bridgeLoad ?? null, clients }, summary };
   },
 });

@@ -4,6 +4,7 @@ import type { ClientSelection, SelectionResolution } from "../../domain/client/s
 import type { ToolCategory } from "../../domain/tool/category.js";
 import type { ClientId, SessionId } from "../../domain/shared/ids.js";
 import type { ClientDirectory } from "../ports/client-directory.js";
+import type { EvalPriority } from "../ports/execution-gateway.js";
 import type { HostFileSystem } from "../ports/host-file-system.js";
 import type { HostShell } from "../ports/host-shell.js";
 import type { Logger } from "../ports/logger.js";
@@ -26,6 +27,8 @@ export interface LuauOptions {
   readonly env?: "fresh" | "vm" | "vm-reset";
   /** Per-run token that gates `mcp.*` calls made from inside the script. */
   readonly scriptToken?: string;
+  /** Internal scheduler lane. Nested script RPC work gets a reserved slot. */
+  readonly priority?: EvalPriority;
 }
 
 /** Lets the `script` tool expose the whole tool surface to in-game Luau as `mcp.*`. */

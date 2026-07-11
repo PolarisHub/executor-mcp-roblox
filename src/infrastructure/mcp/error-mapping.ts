@@ -20,6 +20,8 @@ export function formatDomainError(error: DomainError): string {
       "Call list-clients and select-client explicitly; never guess between connected games.",
     CLIENT_NOT_FOUND: "Refresh list-clients and select the currently connected client.",
     CLIENT_DISCONNECTED: "Refresh list-clients and retry after the connector reconnects.",
+    BRIDGE_OVERLOADED:
+      "Do not retry immediately. Let the bounded queue drain, reduce parallel fan-out, then retry once with jitter.",
     EXECUTION_TIMEOUT:
       "Retry with a smaller scope/limit or a longer timeout; avoid unbounded scans.",
     EXECUTION_FAILED:

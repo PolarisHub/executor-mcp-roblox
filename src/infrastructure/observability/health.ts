@@ -1,5 +1,6 @@
 import type { Clock } from "../../application/ports/clock.js";
 import type { ClientDirectory } from "../../application/ports/client-directory.js";
+import type { BridgeLoadSnapshot } from "../../application/ports/client-directory.js";
 
 /** The payload returned by the `/health` endpoint. */
 export interface HealthReport {
@@ -9,6 +10,7 @@ export interface HealthReport {
   readonly startedAt: number;
   readonly connectedClients: number;
   readonly version: string;
+  readonly bridgeLoad?: Omit<BridgeLoadSnapshot, "clients">;
 }
 
 export interface HealthReporterDeps {
@@ -36,6 +38,7 @@ export class HealthReporter {
   }
 
   report(): HealthReport {
+    const bridgeLoad = this.clients.loadSnapshot?.();
     return {
       service: "executor-mcp-roblox",
       status: "ok",
@@ -43,6 +46,19 @@ export class HealthReporter {
       startedAt: this.startedAt,
       connectedClients: this.clients.list().length,
       version: this.version,
+      ...(bridgeLoad
+        ? {
+            bridgeLoad: {
+              activeEvals: bridgeLoad.activeEvals,
+              queuedEvals: bridgeLoad.queuedEvals,
+              queuedSourceBytes: bridgeLoad.queuedSourceBytes,
+              activeRpcFrames: bridgeLoad.activeRpcFrames,
+              queuedRpcFrames: bridgeLoad.queuedRpcFrames,
+              rejectedEvals: bridgeLoad.rejectedEvals,
+              saturatedClients: bridgeLoad.saturatedClients,
+            },
+          }
+        : {}),
     };
   }
 }

@@ -14,6 +14,7 @@ export type ErrorCode =
   | "AMBIGUOUS_CLIENT"
   | "CLIENT_NOT_FOUND"
   | "CLIENT_DISCONNECTED"
+  | "BRIDGE_OVERLOADED"
   | "EXECUTION_FAILED"
   | "EXECUTION_TIMEOUT"
   | "PROTOCOL"
@@ -74,6 +75,12 @@ export class ClientNotFoundError extends DomainError {
 /** The client's connection dropped while a request was in flight. */
 export class ClientDisconnectedError extends DomainError {
   readonly code = "CLIENT_DISCONNECTED" as const;
+  override readonly retryable = true;
+}
+
+/** The bridge or connector is at its bounded concurrency/queue capacity. */
+export class BridgeOverloadedError extends DomainError {
+  readonly code = "BRIDGE_OVERLOADED" as const;
   override readonly retryable = true;
 }
 

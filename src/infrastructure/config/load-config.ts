@@ -13,6 +13,13 @@ const DEFAULTS = {
   defaultTimeoutMs: 30000,
   defaultThreadContext: 8,
   heartbeatIntervalMs: 2000,
+  maxConcurrentEvals: 2,
+  maxQueuedEvals: 128,
+  maxQueuedSourceBytes: 4 * 1024 * 1024,
+  rpcBatchConcurrency: 8,
+  maxRpcBatchCalls: 128,
+  maxConcurrentRpcFrames: 2,
+  maxQueuedRpcFrames: 32,
   dashboardEnabled: true,
   embeddingsModel: "embeddinggemma",
 } as const;
@@ -103,6 +110,26 @@ function parsePort(raw: string | undefined): number | undefined {
   return Number.parseInt(trimmed, 10);
 }
 
+function parseBoundedIntegerEnv(
+  name: string,
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new ConfigError(`${name} must be an integer between ${min} and ${max}.`, {
+      name,
+      value: raw,
+      min,
+      max,
+    });
+  }
+  return value;
+}
+
 function shortId(id: string): string {
   return id.replace(/-/g, "").slice(0, 8);
 }
@@ -159,6 +186,55 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv): AppConfig {
   const embeddingsUrl = env["ROBLOX_MCP_EMBEDDINGS_URL"]?.trim() || null;
   const embeddingsModel = env["ROBLOX_MCP_EMBEDDINGS_MODEL"]?.trim() || DEFAULTS.embeddingsModel;
   const authToken = env["ROBLOX_MCP_BRIDGE_TOKEN"]?.trim() || null;
+  const maxConcurrentEvals = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_CONCURRENT_EVALS",
+    env["ROBLOX_MCP_MAX_CONCURRENT_EVALS"],
+    DEFAULTS.maxConcurrentEvals,
+    2,
+    16,
+  );
+  const maxQueuedEvals = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_QUEUED_EVALS",
+    env["ROBLOX_MCP_MAX_QUEUED_EVALS"],
+    DEFAULTS.maxQueuedEvals,
+    8,
+    2048,
+  );
+  const maxQueuedSourceBytes = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_QUEUED_SOURCE_BYTES",
+    env["ROBLOX_MCP_MAX_QUEUED_SOURCE_BYTES"],
+    DEFAULTS.maxQueuedSourceBytes,
+    256 * 1024,
+    64 * 1024 * 1024,
+  );
+  const rpcBatchConcurrency = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_RPC_BATCH_CONCURRENCY",
+    env["ROBLOX_MCP_RPC_BATCH_CONCURRENCY"],
+    DEFAULTS.rpcBatchConcurrency,
+    1,
+    64,
+  );
+  const maxRpcBatchCalls = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_RPC_BATCH_CALLS",
+    env["ROBLOX_MCP_MAX_RPC_BATCH_CALLS"],
+    DEFAULTS.maxRpcBatchCalls,
+    8,
+    1000,
+  );
+  const maxConcurrentRpcFrames = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_CONCURRENT_RPC_FRAMES",
+    env["ROBLOX_MCP_MAX_CONCURRENT_RPC_FRAMES"],
+    DEFAULTS.maxConcurrentRpcFrames,
+    1,
+    16,
+  );
+  const maxQueuedRpcFrames = parseBoundedIntegerEnv(
+    "ROBLOX_MCP_MAX_QUEUED_RPC_FRAMES",
+    env["ROBLOX_MCP_MAX_QUEUED_RPC_FRAMES"],
+    DEFAULTS.maxQueuedRpcFrames,
+    4,
+    512,
+  );
 
   return {
     server: {
@@ -184,6 +260,13 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv): AppConfig {
     },
     bridge: {
       heartbeatIntervalMs: DEFAULTS.heartbeatIntervalMs,
+      maxConcurrentEvals,
+      maxQueuedEvals,
+      maxQueuedSourceBytes,
+      rpcBatchConcurrency,
+      maxRpcBatchCalls,
+      maxConcurrentRpcFrames,
+      maxQueuedRpcFrames,
       authToken,
     },
     dashboard: {

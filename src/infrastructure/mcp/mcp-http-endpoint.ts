@@ -2,10 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SessionId } from "../../domain/shared/ids.js";
+import type { McpSessionIdentity } from "./mcp-adapter.js";
+
+const DEFAULT_MAX_SESSIONS = 256;
+const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000;
 
 interface Session {
   readonly server: McpServer;
   readonly transport: WebStandardStreamableHTTPServerTransport;
+  readonly identity: McpSessionIdentity;
+  lastUsedAt: number;
 }
 
 interface SessionRef {
@@ -13,7 +20,10 @@ interface SessionRef {
 }
 
 export interface McpHttpEndpointDeps {
-  readonly createServer: () => McpServer;
+  readonly createServer: (identity: McpSessionIdentity) => McpServer;
+  readonly sessionLabelPrefix?: string;
+  readonly maxSessions?: number;
+  readonly idleTtlMs?: number;
 }
 
 /**
@@ -24,10 +34,12 @@ export interface McpHttpEndpointDeps {
  */
 export class McpHttpEndpoint {
   private readonly sessions = new Map<string, Session>();
+  private initializing = 0;
 
   constructor(private readonly deps: McpHttpEndpointDeps) {}
 
   async handle(request: Request): Promise<Response> {
+    await this.sweepIdleSessions();
     const sessionId = request.headers.get("mcp-session-id");
     if (sessionId) {
       const session = this.sessions.get(sessionId);
@@ -37,6 +49,7 @@ export class McpHttpEndpoint {
           headers: { "content-type": "application/json" },
         });
       }
+      session.lastUsedAt = Date.now();
       return session.transport.handleRequest(request);
     }
 
@@ -49,7 +62,27 @@ export class McpHttpEndpoint {
       });
     }
 
+    if (this.sessions.size + this.initializing >= this.maxSessions()) {
+      return new Response(
+        JSON.stringify({
+          error: "MCP agent session capacity reached.",
+          retryable: true,
+          activeSessions: this.sessions.size,
+          limit: this.maxSessions(),
+        }),
+        {
+          status: 503,
+          headers: { "content-type": "application/json", "retry-after": "1" },
+        },
+      );
+    }
+
     const sessionRef: SessionRef = {};
+    const logicalId = SessionId(randomUUID());
+    const identity: McpSessionIdentity = {
+      id: logicalId,
+      label: `${this.deps.sessionLabelPrefix ?? "agent"}-${logicalId.replace(/-/g, "").slice(0, 8)}`,
+    };
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: randomUUID,
       enableJsonResponse: true,
@@ -62,10 +95,19 @@ export class McpHttpEndpoint {
         if (existing) void existing.server.close().catch(() => undefined);
       },
     });
-    const server = this.deps.createServer();
-    sessionRef.current = { server, transport };
-    await server.connect(transport);
-    return transport.handleRequest(request);
+    const server = this.deps.createServer(identity);
+    sessionRef.current = { server, transport, identity, lastUsedAt: Date.now() };
+    this.initializing += 1;
+    try {
+      await server.connect(transport);
+      return await transport.handleRequest(request);
+    } catch (error) {
+      await transport.close().catch(() => undefined);
+      await server.close().catch(() => undefined);
+      throw error;
+    } finally {
+      this.initializing = Math.max(0, this.initializing - 1);
+    }
   }
 
   async close(): Promise<void> {
@@ -73,6 +115,30 @@ export class McpHttpEndpoint {
     this.sessions.clear();
     await Promise.all(
       sessions.map(async ({ server, transport }) => {
+        await transport.close().catch(() => undefined);
+        await server.close().catch(() => undefined);
+      }),
+    );
+  }
+
+  private maxSessions(): number {
+    return Math.max(1, this.deps.maxSessions ?? DEFAULT_MAX_SESSIONS);
+  }
+
+  private idleTtlMs(): number {
+    return Math.max(60_000, this.deps.idleTtlMs ?? DEFAULT_IDLE_TTL_MS);
+  }
+
+  private async sweepIdleSessions(): Promise<void> {
+    const cutoff = Date.now() - this.idleTtlMs();
+    const expired: Session[] = [];
+    for (const [id, session] of this.sessions) {
+      if (session.lastUsedAt >= cutoff) continue;
+      this.sessions.delete(id);
+      expired.push(session);
+    }
+    await Promise.all(
+      expired.map(async ({ server, transport }) => {
         await transport.close().catch(() => undefined);
         await server.close().catch(() => undefined);
       }),

@@ -47,6 +47,28 @@ describe("decodeClientMessage", () => {
     expect(decoded).toEqual(result);
   });
 
+  it("accepts overload results and nested scheduling priority", () => {
+    const overloaded: ClientMessage = {
+      type: "result",
+      id: "req-overload",
+      result: { ok: false, error: "queue full", kind: "overloaded" },
+    };
+    expect(decodeClientMessage(JSON.stringify(overloaded))).toEqual(overloaded);
+
+    const nested: ServerMessage = {
+      type: "op",
+      id: "req-nested",
+      op: {
+        kind: "eval",
+        source: "return 1",
+        threadContext: 8,
+        timeoutMs: 5000,
+        priority: "nested",
+      },
+    };
+    expect(JSON.parse(encodeServerMessage(nested))).toEqual(nested);
+  });
+
   it("round-trips a valid pong", () => {
     const pong: ClientMessage = { type: "pong", id: "ping-1" };
     const decoded = decodeClientMessage(JSON.stringify(pong));

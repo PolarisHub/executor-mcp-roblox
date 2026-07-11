@@ -212,6 +212,7 @@ describe("ToolInvoker", () => {
       source: "return 1",
       threadContext: 8, // from config.execution.defaultThreadContext
       timeoutMs: 5000, // from config.execution.defaultTimeoutMs
+      schedulerKey: "session-1",
     });
     expect(call.signal).toBeInstanceOf(AbortSignal);
   });
@@ -237,6 +238,7 @@ describe("ToolInvoker", () => {
       source: "return 2",
       threadContext: 2,
       timeoutMs: 100,
+      schedulerKey: "session-1",
     });
   });
 

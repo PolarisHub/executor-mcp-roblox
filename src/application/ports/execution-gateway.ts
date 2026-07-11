@@ -1,5 +1,7 @@
 import type { ClientId } from "../../domain/shared/ids.js";
 
+export type EvalPriority = "normal" | "nested";
+
 export interface EvalRequest {
   /** Luau source to execute on the client. The first returned value comes back decoded. */
   readonly source: string;
@@ -11,6 +13,10 @@ export interface EvalRequest {
   readonly env?: "fresh" | "vm" | "vm-reset";
   /** Per-run token that gates inbound `rpc-call` frames from this script's mcp.* calls. */
   readonly scriptToken?: string;
+  /** Nested script RPCs use the reserved lane so a parent script cannot deadlock itself. */
+  readonly priority?: EvalPriority;
+  /** Host-only fairness key. It is never sent to or exposed inside the game. */
+  readonly schedulerKey?: string;
 }
 
 /**
