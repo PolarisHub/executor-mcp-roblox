@@ -3675,7 +3675,7 @@ return p"></textarea>
     im.src = "https://www.roblox.com/headshot-thumbnail/image?userId=" + nd.data.userId + "&width=150&height=150&format=png";
   }
   function makeNode(id, kind, data, color) {
-    return { id: id, kind: kind, data: data || {}, color: color || COL.accent, x: bridge.x || 0, y: bridge.y || 0, tx: 0, ty: 0, scale: 0.001, target: 1, pulse: 0, hover: 0, hoverS: 0, calls: 0, lastTool: "", lastOk: true, lastSeen: clock, midFrac: 0.5, nextSpark: Math.random() * 1.5, img: null, imgTried: false };
+    return { id: id, kind: kind, data: data || {}, color: color || COL.accent, x: bridge.x || 0, y: bridge.y || 0, tx: 0, ty: 0, scale: 0.001, target: 1, pulse: 0, hover: 0, hoverS: 0, calls: 0, lastTool: "", lastOk: true, lastSeen: clock, midFrac: 0.5, img: null, imgTried: false };
   }
   function gameByName(name) {
     if (!name) return null;
