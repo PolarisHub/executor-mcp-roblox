@@ -39,19 +39,27 @@ export class McpHttpEndpoint {
   constructor(private readonly deps: McpHttpEndpointDeps) {}
 
   async handle(request: Request): Promise<Response> {
-    await this.sweepIdleSessions();
     const sessionId = request.headers.get("mcp-session-id");
     if (sessionId) {
       const session = this.sessions.get(sessionId);
       if (!session) {
+        void this.sweepIdleSessions();
         return new Response(JSON.stringify({ error: "Unknown MCP session." }), {
           status: 404,
           headers: { "content-type": "application/json" },
         });
       }
+      // Refresh BEFORE sweeping so an active request can never evict its own
+      // session (which used to 404 and tear down the whole proxy). Sweep others
+      // opportunistically in the background, excluding this session.
       session.lastUsedAt = Date.now();
+      void this.sweepIdleSessions(sessionId);
       return session.transport.handleRequest(request);
     }
+
+    // No session id: this is an initialization POST (or an invalid session-less
+    // request). Sweep idle sessions to reclaim capacity before creating a new one.
+    await this.sweepIdleSessions();
 
     // Only an initialization POST may create a new stateful session. Let the
     // SDK produce the standards-compliant error for a session-less GET/DELETE.
@@ -129,10 +137,11 @@ export class McpHttpEndpoint {
     return Math.max(60_000, this.deps.idleTtlMs ?? DEFAULT_IDLE_TTL_MS);
   }
 
-  private async sweepIdleSessions(): Promise<void> {
+  private async sweepIdleSessions(exceptId?: string): Promise<void> {
     const cutoff = Date.now() - this.idleTtlMs();
     const expired: Session[] = [];
     for (const [id, session] of this.sessions) {
+      if (id === exceptId) continue;
       if (session.lastUsedAt >= cutoff) continue;
       this.sessions.delete(id);
       expired.push(session);

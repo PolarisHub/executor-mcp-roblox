@@ -117,10 +117,13 @@ const clientMessageSchema = z.union([
     type: z.literal("rpc-batch"),
     id: z.string(),
     token: z.string(),
-    calls: z.array(rpcBatchCallSchema).readonly(),
+    // Hard cap so a hostile frame can't force an O(N) allocation + multi-MB reply.
+    // Reasonable overages above the per-batch safety cap are still handled
+    // gracefully in handleRpcBatch; only clearly-abusive frames are rejected here.
+    calls: z.array(rpcBatchCallSchema).max(4096).readonly(),
   }),
-  z.object({ type: z.literal("pubsub-subscribe"), channel: z.string() }),
-  z.object({ type: z.literal("pubsub-unsubscribe"), channel: z.string() }),
+  z.object({ type: z.literal("pubsub-subscribe"), channel: z.string().max(256) }),
+  z.object({ type: z.literal("pubsub-unsubscribe"), channel: z.string().max(256) }),
   z.object({ type: z.literal("pubsub-publish"), channel: z.string(), payload: z.unknown() }),
 ]) satisfies z.ZodType<ClientMessage>;
 

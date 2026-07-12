@@ -400,7 +400,22 @@ async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
     finish();
   };
   const sendUpstream = (message: (typeof queued)[number]): void => {
-    void http.send(message).catch(fail);
+    void http.send(message).catch((error: unknown) => {
+      // A per-request POST failure (e.g. a stale-session 404, or a transient hiccup)
+      // must NOT collapse the whole proxy. Answer a JSON-RPC *request* with an error
+      // so the host doesn't hang forever, and drop notifications. Only a real
+      // transport close (onclose / stdin-end) tears the proxy down.
+      const msg = error instanceof Error ? error.message : String(error);
+      const id = (message as { id?: string | number | null }).id;
+      if (id !== undefined && id !== null) {
+        log(`upstream request failed, returning error to host - ${msg}`);
+        void stdio
+          .send({ jsonrpc: "2.0", id, error: { code: -32001, message: msg } })
+          .catch(fail);
+      } else {
+        log(`upstream notification dropped - ${msg}`, debug);
+      }
+    });
   };
 
   stdio.onmessage = (message) => {
@@ -411,7 +426,11 @@ async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
     void stdio.send(message).catch(fail);
   };
   stdio.onerror = fail;
-  http.onerror = fail;
+  // Non-fatal: the SDK routes per-POST errors here too, so only log. A genuine
+  // transport close is handled by http.onclose (which triggers reconnect).
+  http.onerror = (error: unknown) => {
+    log(`http transport error - ${error instanceof Error ? error.message : String(error)}`, debug);
+  };
   stdio.onclose = () => {
     void http.close().catch(fail);
     finish();
@@ -508,8 +527,14 @@ async function run(argv: string[]): Promise<void> {
       throw new Error(`${owner.reason}; close the stale owner and relaunch the MCP server`);
     }
     if (owner?.kind === "ready") {
+      const attachedAt = Date.now();
       const retry = await proxyToOwner(owner.base, options.debug);
       if (!retry) return;
+      // A proxy that stayed attached for a real session and then dropped is a normal
+      // long-lived reconnect, not a failed start — refresh the attempt budget so a
+      // healthy connection isn't permanently killed after a handful of reconnects.
+      // The elapsed-time guard prevents a rapidly-flapping owner from looping forever.
+      if (Date.now() - attachedAt > 5000) attempt = 0;
       await sleep(retryDelay(attempt, options));
       continue;
     }

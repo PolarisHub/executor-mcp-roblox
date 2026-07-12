@@ -97,7 +97,12 @@ interface Connection {
   lastNormalSchedulerKey: string | null;
   /** Consecutive heartbeats sent with no intervening pong. */
   missedPongs: number;
+  /** Pub/sub channels this connection is subscribed to (bounded). */
+  readonly subscribedChannels: Set<string>;
 }
+
+/** Per-connection cap on distinct pub/sub channel subscriptions. */
+const MAX_PUBSUB_CHANNELS = 64;
 
 interface BridgeDeps {
   readonly config: AppConfig;
@@ -462,8 +467,22 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       return;
     }
     connection.pumpingEvals = true;
+    // While the socket write buffer is full, nothing else re-triggers the pump, so
+    // poll until it drains rather than stalling (or failing) the queued backlog.
+    const rescheduleIfIdle = (): void => {
+      if (connection.pending.size === 0 && connection.evalQueue.length > 0) {
+        const timer = setTimeout(() => this.pumpEvalQueue(connection), 50);
+        timer.unref?.();
+      }
+    };
     try {
       while (connection.pending.size < this.maxConcurrentEvals()) {
+        // Transient write backpressure: leave queued work queued (it is NOT a
+        // failure) instead of dispatching into a saturated socket.
+        if (connection.socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
+          rescheduleIfIdle();
+          break;
+        }
         const index = this.nextEvalIndex(connection);
         if (index < 0) break;
         const [ticket] = connection.evalQueue.splice(index, 1);
@@ -497,6 +516,17 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
             },
           });
         } catch (error) {
+          if (error instanceof BridgeOverloadedError) {
+            // Socket saturated mid-dispatch but still open: put the ticket back and
+            // stop pumping — don't fail live work over transient backpressure.
+            connection.pending.delete(ticket.id);
+            ticket.dispatchedAt = undefined;
+            connection.evalQueue.unshift(ticket);
+            connection.queuedSourceBytes += ticket.sourceBytes;
+            this.updateLoadMetrics();
+            rescheduleIfIdle();
+            break;
+          }
           this.settleEval(connection, ticket, () => ticket.reject(toDomainError(error)));
         }
       }
@@ -666,6 +696,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       activeRpcFrames: 0,
       lastNormalSchedulerKey: null,
       missedPongs: 0,
+      subscribedChannels: new Set(),
     };
     this.connections.set(id, connection);
 
@@ -777,15 +808,29 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
         return;
       }
       case "pubsub-subscribe": {
+        // Cap distinct channels per connection so one connector can't grow the
+        // pub/sub map without bound.
+        if (
+          !connection.subscribedChannels.has(message.channel) &&
+          connection.subscribedChannels.size >= MAX_PUBSUB_CHANNELS
+        ) {
+          this.logger.warn(
+            { clientId: connection.id, limit: MAX_PUBSUB_CHANNELS },
+            "pubsub subscribe rejected: per-connection channel cap reached",
+          );
+          return;
+        }
         let set = this.pubsubByChannel.get(message.channel);
         if (!set) {
           set = new Set();
           this.pubsubByChannel.set(message.channel, set);
         }
         set.add(connection.id);
+        connection.subscribedChannels.add(message.channel);
         return;
       }
       case "pubsub-unsubscribe": {
+        connection.subscribedChannels.delete(message.channel);
         const set = this.pubsubByChannel.get(message.channel);
         if (set) {
           set.delete(connection.id);

@@ -941,7 +941,10 @@ async function runAssertions(
   const unresolvedIds: string[] = [];
   for (const item of truth) {
     const assertion = resolved.find((candidate) => candidate.id === item.id)!;
-    const passed = result.isError ? false : item.passed;
+    // Per-assertion truth is already fail-closed (an assertion is only `true` when
+    // its own live read succeeded and its predicate held), so a batch-level error
+    // on a *sibling* assertion must not override a genuinely-passing one.
+    const passed = item.passed;
     const reasonText = result.isError
       ? "assert-state returned a handled error."
       : passed === null

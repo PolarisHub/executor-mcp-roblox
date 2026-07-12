@@ -232,6 +232,19 @@ function compose(): Application {
 }
 
 async function main(): Promise<void> {
+  // Resilience: a single tool/bridge error must NEVER tear down the process — that
+  // shows up to the MCP host as "transport closed" and drops the whole connection.
+  // Log to stderr (stdout is reserved for the MCP protocol) and keep serving; a bad
+  // tool call then fails on its own instead of killing every other tool. Intentional
+  // shutdown still flows through SIGINT/SIGTERM/stdin-close below.
+  process.on("uncaughtException", (error: Error) => {
+    process.stderr.write(`[uncaughtException] ${error?.stack ?? String(error)}\n`);
+  });
+  process.on("unhandledRejection", (reason: unknown) => {
+    const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    process.stderr.write(`[unhandledRejection] ${msg}\n`);
+  });
+
   let app: Application;
   try {
     app = compose();

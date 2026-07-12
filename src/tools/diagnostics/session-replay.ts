@@ -10,7 +10,7 @@ const MUTATING_GUARD = new Set<string>([
   "set-instance-property", "set-properties-bulk", "set-attribute",
   "create-instance", "destroy-instance", "clone-instance",
   "write-file", "delete-file", "delete-folder", "make-folder", "append-file",
-  "set-fps-cap", "set-fast-flag", "set-clipboard", "set-active-client",
+  "set-fps-cap", "set-fast-flag", "set-clipboard", "select-client",
   "clear-selection", "ws-send", "ws-close", "send-packet", "block-packets",
   "hook-function", "hook-metamethod", "restore-hook", "spoof-function-return",
 ]);

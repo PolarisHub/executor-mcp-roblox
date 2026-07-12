@@ -2910,7 +2910,7 @@ return p"></textarea>
   }
   function renderPbForm(pb, isNew) {
     var paramRows = (pb.params || []).map(function (p) {
-      return '<div class="pname">${" + esc(p) + "}</div>' +
+      return '<div class="pname">\${' + esc(p) + '}</div>' +
         '<input class="search" data-param="' + esc(p) + '" placeholder="value" />';
     }).join("");
     var runRes = "";
@@ -3090,6 +3090,7 @@ return p"></textarea>
   }, 0);
 
   // ---- spy tab ----
+  var spyState = { clientId: null, data: null, err: null, filter: "", autoRefresh: true };
   function spyArgsPreview(args) {
     if (!Array.isArray(args)) return "";
     try { return JSON.stringify(args).slice(0, 240); }
@@ -3606,7 +3607,9 @@ return p"></textarea>
     accent: [107, 155, 255],
     line: [96, 112, 150],
     text: [150, 156, 170],
-    hot: [232, 244, 255]
+    hot: [232, 244, 255],
+    flow: [110, 185, 255],
+    flowErr: [255, 116, 104]
   };
   // one colour per client (right) and per agent (left)
   var GAME_COLORS = [[96, 178, 255], [96, 214, 201], [214, 161, 74], [186, 140, 255], [94, 200, 130], [232, 120, 170]];
