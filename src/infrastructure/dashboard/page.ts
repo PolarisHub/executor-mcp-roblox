@@ -3627,7 +3627,12 @@ return p"></textarea>
   var games = [];
   var agents = [];
   var packets = [];
-  var nextReturn = 0.8 + Math.random() * 1.6;
+  // Streak timing. Real tool traffic ONLY - no ambient/synthetic sparks. life is
+  // roughly the seconds a comet takes to cross its path; kept large so a single
+  // send -> response reads clearly and slowly. A request travels out, then its
+  // response waits RET_DELAY (so it leaves the client only once the request has
+  // arrived) before travelling back.
+  var REQ_LIFE = 3.0, RET_LIFE = 3.0, FLOW_LIFE = 1.5, RET_DELAY = 2.4;
   var AGENT_MAX = 2, AGENT_TTL = 70;
 
   function resize() {
@@ -3693,19 +3698,21 @@ return p"></textarea>
   }
   function spawnFlow(from, to, midFrac, col) {
     if (reduce) return;
-    packets.push({ a: from, b: to, midFrac: midFrac, t: 0, life: 0.5, col: col, ret: false });
+    packets.push({ a: from, b: to, midFrac: midFrac, t: 0, life: FLOW_LIFE, col: col, ret: false });
   }
   // one continuous request comet that travels the full agent -> bridge -> client path
   function spawnRequest(agent, game, col) {
     if (reduce) return;
-    packets.push({ reqFull: true, ag: agent, gm: game, t: 0, life: 0.95, col: col });
+    packets.push({ reqFull: true, ag: agent, gm: game, t: 0, life: REQ_LIFE, col: col });
   }
   function requestPath(agent, game) {
     return elbowPath(agent, bridge, agent.midFrac).concat(elbowPath(bridge, game, game.midFrac).slice(1));
   }
   function spawnReturn(g) {
     if (reduce || !g || !agents.length) return;
-    for (var i = 0; i < agents.length; i++) packets.push({ ret: true, g: g, ag: agents[i], t: 0, life: 0.95, col: RET_MID });
+    // The response leaves the client only AFTER the request has arrived, so each
+    // return packet waits out RET_DELAY (invisible) before it starts travelling.
+    for (var i = 0; i < agents.length; i++) packets.push({ ret: true, g: g, ag: agents[i], t: 0, life: RET_LIFE, col: RET_MID, delay: RET_DELAY });
   }
   function syncClients(list) {
     list = list || [];
@@ -4031,6 +4038,7 @@ return p"></textarea>
 
     for (var p = packets.length - 1; p >= 0; p--) {
       var pk = packets[p];
+      if (pk.delay > 0) { pk.delay -= 0.016; continue; }
       pk.t += 0.016 / pk.life;
       drawPacket(pk);
       if (pk.t >= 1.1) packets.splice(p, 1);
