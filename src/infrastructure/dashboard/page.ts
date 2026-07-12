@@ -4004,33 +4004,9 @@ return p"></textarea>
 
     ctx.clearRect(0, 0, W, H);
 
-    // Truly-random ambient data: each live link fires a streak on its own random
-    // timer (no shared clock/phase), coloured by that agent/client.
-    if (!reduce) {
-      // skewed (product-of-randoms) intervals give clumps of quick streaks plus the
-      // occasional long gap, so the flow reads as organic rather than metronomic.
-      for (var sa = 0; sa < agents.length; sa++) {
-        var an = agents[sa];
-        an.nextSpark -= 0.016;
-        if (an.nextSpark <= 0) {
-          if (an.scale > 0.35) packets.push({ a: an, b: bridge, midFrac: an.midFrac, t: 0, life: 0.75 + Math.random() * 1.7, col: an.color, intensity: 0.45 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.16 });
-          an.nextSpark = 0.18 + Math.random() * Math.random() * 4;
-        }
-      }
-      for (var sg = 0; sg < games.length; sg++) {
-        var gn = games[sg];
-        gn.nextSpark -= 0.016;
-        if (gn.nextSpark <= 0) {
-          if (gn.scale > 0.35) packets.push({ a: bridge, b: gn, midFrac: gn.midFrac, t: 0, life: 0.75 + Math.random() * 1.7, col: gn.color, intensity: 0.45 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.16 });
-          gn.nextSpark = 0.18 + Math.random() * Math.random() * 4;
-        }
-      }
-      nextReturn -= 0.016;
-      if (nextReturn <= 0) {
-        if (agents.length && games.length) packets.push({ ret: true, g: games[(Math.random() * games.length) | 0], ag: agents[(Math.random() * agents.length) | 0], t: 0, life: 1.2 + Math.random() * 1.6, intensity: 0.4 + Math.random() * 0.25, len: 0.12 + Math.random() * 0.14 });
-        nextReturn = 0.25 + Math.random() * Math.random() * 3.6;
-      }
-    }
+    // No ambient/synthetic streaks. Every comet below is spawned by a REAL tool
+    // call through markActivity (request out, then the response back). Idle links
+    // stay quiet, so what you see on the wire is what the agents are actually doing.
 
     if (agents.length && games.length) drawReturn();
     for (var ai = 0; ai < agents.length; ai++) { var av = agents[ai]; drawElbow(av, bridge, av.midFrac, 0.09 + av.scale * 0.05 + av.pulse * 0.18); }
