@@ -3632,7 +3632,9 @@ return p"></textarea>
   // send -> response reads clearly and slowly. A request travels out, then its
   // response waits RET_DELAY (so it leaves the client only once the request has
   // arrived) before travelling back.
-  var REQ_LIFE = 3.0, RET_LIFE = 3.0, FLOW_LIFE = 1.5, RET_DELAY = 2.4;
+  // RET_DELAY > REQ_LIFE so the response leaves the client only AFTER the request
+  // head has actually arrived (t=1 ~ REQ_LIFE seconds), with a short processing gap.
+  var REQ_LIFE = 3.0, RET_LIFE = 3.0, FLOW_LIFE = 1.5, RET_DELAY = 3.2;
   var AGENT_MAX = 2, AGENT_TTL = 70;
 
   function resize() {
