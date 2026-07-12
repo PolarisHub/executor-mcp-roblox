@@ -321,15 +321,52 @@ end
 -- recurse (cycle-guarded, depth/size capped), scalars pass through.
 --==============================================================================--
 
+-- HttpService:JSONEncode THROWS ("Can't convert to JSON") on any string that is not
+-- valid UTF-8 — a Latin-1 high byte, a lone surrogate/continuation byte, or a
+-- multibyte codepoint sliced in half by the byte-offset truncation below. If such a
+-- string reaches the wire encoder the entire result frame is silently dropped and the
+-- eval hangs until timeout, so every string is repaired here first: valid runs are
+-- kept verbatim and each invalid byte is replaced with U+FFFD. The fast path (already
+-- valid, the overwhelming case) costs a single utf8.len.
+local UTF8_REPLACEMENT = string.char(0xEF, 0xBF, 0xBD)
+local function scrubUtf8(value)
+	if value == "" then return value end
+	if typeof(utf8) ~= "table" or not isCallable(utf8.len) then return value end
+	local okFast, lenFast = pcall(utf8.len, value)
+	if okFast and lenFast ~= nil then return value end
+	local out = {}
+	local i = 1
+	local n = #value
+	while i <= n do
+		-- utf8.len returns (len) when [i..end] is valid, (nil, badPos) on an invalid
+		-- byte, or THROWS when i itself lands on a stray continuation byte.
+		local ok, a, b = pcall(utf8.len, value, i)
+		if not ok then
+			out[#out + 1] = UTF8_REPLACEMENT
+			i += 1
+		elseif a ~= nil then
+			out[#out + 1] = string.sub(value, i)
+			break
+		else
+			if b ~= nil and b > i then
+				out[#out + 1] = string.sub(value, i, b - 1)
+			end
+			out[#out + 1] = UTF8_REPLACEMENT
+			i = (b or i) + 1
+		end
+	end
+	return table.concat(out)
+end
+
 local function encodeString(value, budget)
 	local remaining = math.max(0, ENCODE_MAX_TOTAL_STRING_BYTES - budget.stringBytes)
 	if remaining == 0 then return "<result-string-budget>" end
 	local length = math.min(#value, ENCODE_MAX_STRING_LENGTH, remaining)
 	budget.stringBytes = budget.stringBytes + length
 	if length < #value then
-		return string.sub(value, 1, length) .. "… (truncated)"
+		return scrubUtf8(string.sub(value, 1, length)) .. "… (truncated)"
 	end
-	return value
+	return scrubUtf8(value)
 end
 
 local function encodeValue(value, depth, seen, budget)
@@ -397,12 +434,14 @@ local function encodeValue(value, depth, seen, budget)
 					result["…"] = "(truncated)"
 					break
 				end
-				-- JSON object keys must be strings.
+				-- JSON object keys must be strings — and, like values, must be valid
+				-- UTF-8 or JSONEncode throws, so scrub them too (byte-slice can split a
+				-- multibyte key mid-codepoint).
 				local key
 				if typeof(k) == "string" then
-					key = string.sub(k, 1, ENCODE_MAX_KEY_LENGTH)
+					key = scrubUtf8(string.sub(k, 1, ENCODE_MAX_KEY_LENGTH))
 				else
-					key = string.sub(tostring(k), 1, ENCODE_MAX_KEY_LENGTH)
+					key = scrubUtf8(string.sub(tostring(k), 1, ENCODE_MAX_KEY_LENGTH))
 				end
 				result[key] = encodeValue(v, depth + 1, seen, budget)
 				entries += 1
@@ -1300,7 +1339,25 @@ local function runConnection()
 					if not ok then
 						result = { ok = false, error = "connector eval guard: " .. tostring(result), kind = "runtime" }
 					end
-					if connected then send({ type = "result", id = job.id, result = result }) end
+					if connected then
+						local sent = send({ type = "result", id = job.id, result = result })
+						-- send() returns false without transmitting when the payload can't
+						-- be JSON-encoded (a JSON-hostile value that slipped past the encoder).
+						-- Fail closed: settle the server's ticket with an explicit error so it
+						-- can't hang until the eval timeout. A minimal ASCII error frame is
+						-- always encodable, so this can only fail on a genuinely dead socket.
+						if not sent and connected then
+							send({
+								type = "result",
+								id = job.id,
+								result = {
+									ok = false,
+									error = "connector could not serialize the result frame (non-JSON-encodable value).",
+									kind = "runtime",
+								},
+							})
+						end
+					end
 					evalActive = math.max(0, evalActive - 1)
 					if parent then activeScriptParents = math.max(0, activeScriptParents - 1) end
 					pumpEvalQueue()
