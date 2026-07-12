@@ -27,6 +27,15 @@ describe("connector load safety", () => {
     expect(connector).toContain("activeScriptParents");
   });
 
+  it("normalizes copied HTTP/WebSocket URLs and prefers IPv4 localhost", () => {
+    expect(connector).toContain('RuntimeConfig.BridgeURL or "127.0.0.1:16384"');
+    expect(connector).toContain('text = text:gsub("^wss?://", ""):gsub("^https?://", "")');
+    expect(connector).toContain('text = text:gsub("/bridge/?$", ""):gsub("/+$", "")');
+    expect(connector).toContain('candidates[#candidates + 1] = "127.0.0.1" .. port');
+    expect(connector).toContain('"executor returned no socket"');
+    expect(connector).toContain('"WebSocket connection failed; tried "');
+  });
+
   it("advertises closure, Actor, state, script-identity, and input primitives during handshake", () => {
     for (const capability of [
       '"clonefunction"',

@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import WebSocket from "ws";
 
 import { loadConfig } from "../infrastructure/config/load-config.js";
 
@@ -40,12 +41,19 @@ interface OwnerProbe {
   readonly health: Health;
 }
 
+interface DegradedOwner {
+  readonly kind: "degraded";
+  readonly base: string;
+  readonly health: Health;
+  readonly reason: string;
+}
+
 interface IncompatibleOwner {
   readonly kind: "incompatible";
   readonly reason: string;
 }
 
-type ProbeResult = OwnerProbe | IncompatibleOwner | undefined;
+type ProbeResult = OwnerProbe | DegradedOwner | IncompatibleOwner | undefined;
 
 interface LockMetadata {
   readonly pid: number;
@@ -164,6 +172,42 @@ async function fetchWithTimeout(
   }
 }
 
+/** Probe the actual Roblox bridge upgrade, not only the HTTP health endpoint. */
+async function probeBridge(base: string, timeoutMs: number): Promise<boolean> {
+  const websocketUrl = `${base.replace(/^http:/, "ws:").replace(/^https:/, "wss:")}/bridge`;
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const socket = new WebSocket(websocketUrl);
+    const timer = setTimeout(() => {
+      try {
+        socket.terminate();
+      } catch {
+        // The socket may already be closed.
+      }
+      finish(false);
+    }, timeoutMs);
+
+    const finish = (result: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    socket.once("open", () => {
+      finish(true);
+      try {
+        socket.close();
+      } catch {
+        // The readiness result is already known.
+      }
+    });
+    socket.once("error", () => finish(false));
+    socket.once("unexpected-response", () => finish(false));
+    socket.once("close", () => finish(false));
+  });
+}
+
 async function findOwner(host: string, port: number, probeTimeoutMs: number): Promise<ProbeResult> {
   const base = endpoint(host, port);
   try {
@@ -187,6 +231,14 @@ async function findOwner(host: string, port: number, probeTimeoutMs: number): Pr
         reason: `an older server owns ${host}:${port}; restart that server once so the launcher handoff can be enabled`,
       };
     }
+    if (!(await probeBridge(base, probeTimeoutMs))) {
+      return {
+        kind: "degraded",
+        base,
+        health,
+        reason: `the owner at ${host}:${port} is HTTP-healthy but its /bridge WebSocket upgrade is unavailable`,
+      };
+    }
     return { kind: "ready", base, health };
   } catch {
     return undefined;
@@ -198,7 +250,7 @@ async function waitForOwner(
   port: number,
   options: RuntimeOptions,
   timeoutMs: number,
-): Promise<OwnerProbe | IncompatibleOwner | undefined> {
+): Promise<OwnerProbe | DegradedOwner | IncompatibleOwner | undefined> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const owner = await findOwner(host, port, options.probeTimeoutMs);
@@ -206,6 +258,29 @@ async function waitForOwner(
     await sleep(Math.min(100, Math.max(10, deadline - Date.now())));
   }
   return undefined;
+}
+
+/**
+ * An owner can remain HTTP-healthy while its WebSocketServer is already closed
+ * during a hung shutdown. Watch for that split-brain state and let the
+ * supervisor restart the child instead of keeping a dead bridge forever.
+ */
+async function monitorOwner(host: string, port: number, options: RuntimeOptions): Promise<string> {
+  let misses = 0;
+  while (true) {
+    await sleep(1000);
+    const owner = await findOwner(host, port, options.probeTimeoutMs);
+    if (owner?.kind === "ready") {
+      misses = 0;
+      continue;
+    }
+    misses += 1;
+    if (misses >= 3) {
+      return owner?.kind === "degraded"
+        ? owner.reason
+        : `owner readiness disappeared from ${host}:${port}`;
+    }
+  }
 }
 
 async function acquireStartupLock(
@@ -251,6 +326,43 @@ async function releaseStartupLock(lock: StartupLock, debug: boolean): Promise<vo
   await lock.handle.close().catch(() => undefined);
   await unlink(lock.path).catch(() => undefined);
   log("startup lock released", debug);
+}
+
+/** Take over only the process identified by our matching launcher lock. */
+async function recoverDegradedOwner(
+  path: string,
+  host: string,
+  port: number,
+  debug: boolean,
+): Promise<boolean> {
+  try {
+    const raw = await readFile(path, "utf8");
+    const metadata = JSON.parse(raw) as Partial<LockMetadata>;
+    if (
+      metadata.host !== host ||
+      metadata.port !== port ||
+      typeof metadata.pid !== "number" ||
+      metadata.pid === process.pid ||
+      !isProcessAlive(metadata.pid)
+    ) {
+      return false;
+    }
+
+    log(`restarting degraded owner process ${metadata.pid} for ${host}:${port}`, debug);
+    if (process.platform === "win32") {
+      const killer = spawn("taskkill.exe", ["/PID", String(metadata.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      const code = await exitCode(killer);
+      return code === 0;
+    }
+
+    process.kill(metadata.pid, "SIGTERM");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
@@ -347,9 +459,10 @@ async function startOwner(
     env: process.env,
     stdio: "inherit",
   });
+  const childExit = exitCode(child);
   const result = await Promise.race([
     waitForOwner(host, port, options, options.readyTimeoutMs).then((owner) => ({ owner })),
-    exitCode(child).then((code) => ({ code })),
+    childExit.then((code) => ({ code })),
   ]);
   if ("code" in result) return result.code;
   if (result.owner?.kind !== "ready") {
@@ -358,7 +471,14 @@ async function startOwner(
     return 1;
   }
   log(`owner ready on ${host}:${port}`, options.debug);
-  return exitCode(child);
+  const supervised = await Promise.race([
+    childExit.then((code) => ({ code })),
+    monitorOwner(host, port, options).then((reason) => ({ reason })),
+  ]);
+  if ("code" in supervised) return supervised.code;
+  log(`${supervised.reason}; restarting owner`, options.debug);
+  child.kill();
+  return 75;
 }
 
 function retryDelay(attempt: number, options: RuntimeOptions): number {
@@ -379,6 +499,14 @@ async function run(argv: string[]): Promise<void> {
   for (let attempt = 1; attempt <= options.maxStartAttempts; attempt += 1) {
     const owner = await findOwner(host, port, options.probeTimeoutMs);
     if (owner?.kind === "incompatible") throw new Error(owner.reason);
+    if (owner?.kind === "degraded") {
+      const recovered = await recoverDegradedOwner(path, host, port, options.debug);
+      if (recovered) {
+        await sleep(250);
+        continue;
+      }
+      throw new Error(`${owner.reason}; close the stale owner and relaunch the MCP server`);
+    }
     if (owner?.kind === "ready") {
       const retry = await proxyToOwner(owner.base, options.debug);
       if (!retry) return;
@@ -390,6 +518,11 @@ async function run(argv: string[]): Promise<void> {
     if (!lock) {
       const winner = await waitForOwner(host, port, options, options.readyTimeoutMs);
       if (winner?.kind === "incompatible") throw new Error(winner.reason);
+      if (winner?.kind === "degraded") {
+        const recovered = await recoverDegradedOwner(path, host, port, options.debug);
+        if (recovered) continue;
+        throw new Error(`${winner.reason}; close the stale owner and relaunch the MCP server`);
+      }
       if (winner?.kind === "ready") continue;
       await sleep(retryDelay(attempt, options));
       continue;
@@ -405,6 +538,11 @@ async function run(argv: string[]): Promise<void> {
     // starting. Give that owner a chance to appear before retrying the spawn.
     const winner = await waitForOwner(host, port, options, 1500);
     if (winner?.kind === "incompatible") throw new Error(winner.reason);
+    if (winner?.kind === "degraded") {
+      const recovered = await recoverDegradedOwner(path, host, port, options.debug);
+      if (recovered) continue;
+      throw new Error(`${winner.reason}; close the stale owner and relaunch the MCP server`);
+    }
     if (winner?.kind === "ready") continue;
     if (lastExitCode === 0 && hostInputClosed()) return;
     if (attempt < options.maxStartAttempts) {

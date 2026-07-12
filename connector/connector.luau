@@ -17,7 +17,7 @@
 		  capped) and serialized with HttpService:JSONEncode — no bespoke Lua encoding.
 		- The socket reconnects forever with capped exponential backoff + jitter.
 
-	Configure via getgenv().BridgeURL (default "localhost:16384"). The script connects
+	Configure via getgenv().BridgeURL (default "127.0.0.1:16384"). The script connects
 	to ws://<BridgeURL>/bridge.
 ]]
 
@@ -43,7 +43,19 @@ local function boundedInteger(value, fallback, minimum, maximum)
 	return math.clamp(math.floor(number), minimum, maximum)
 end
 
-local BridgeURL = RuntimeConfig.BridgeURL or "localhost:16384"
+-- Accept the documented host:port form as well as values copied from a browser
+-- URL. The server binds IPv4 by default; preferring 127.0.0.1 avoids Windows
+-- localhost resolving to ::1 while the bridge is listening on 127.0.0.1.
+local function normalizeBridgeURL(value)
+	local text = tostring(value or "")
+	text = text:gsub("^%s+", ""):gsub("%s+$", "")
+	text = text:gsub("^wss?://", ""):gsub("^https?://", "")
+	text = text:gsub("/bridge/?$", ""):gsub("/+$", "")
+	if text == "" then text = "127.0.0.1:16384" end
+	return text
+end
+
+local BridgeURL = normalizeBridgeURL(RuntimeConfig.BridgeURL or "127.0.0.1:16384")
 -- Optional shared secret. When the server is started with
 -- ROBLOX_MCP_BRIDGE_TOKEN set, the connector must send this exact string or the
 -- bridge closes the socket. Leave nil/empty when the server runs unauthenticated.
@@ -1133,45 +1145,70 @@ local function jsonDecode(text)
 	return nil
 end
 
+local function bridgeCandidates()
+	local candidates = { BridgeURL }
+	local host, port = BridgeURL:match("^([^:]+)(:%d+)$")
+	if host ~= nil and port ~= nil then
+		if host == "localhost" then
+			candidates[#candidates + 1] = "127.0.0.1" .. port
+		elseif host == "127.0.0.1" then
+			candidates[#candidates + 1] = "localhost" .. port
+		elseif host == "0.0.0.0" then
+			candidates[#candidates + 1] = "127.0.0.1" .. port
+		end
+	end
+	return candidates
+end
+
 -- Open a WebSocket to the bridge with a bounded wait; returns the socket or nil.
+-- Some executors return (nil, reason) instead of throwing, so preserve both
+-- forms and never turn a useful failure into the old "...: nil" message.
 local function connectSocket()
 	if typeof(WebSocket) ~= "table" and typeof(WebSocket) ~= "userdata" then
 		return nil, "Executor does not expose a WebSocket global."
 	end
-	if not isCallable(WebSocket.connect) then
-		return nil, "WebSocket.connect is unavailable."
+
+	local connect = WebSocket.connect or WebSocket.Connect
+	if not isCallable(connect) then
+		return nil, "WebSocket.connect/WebSocket.Connect is unavailable."
 	end
 
-	local url = "ws://" .. BridgeURL .. "/bridge"
-	local socket = nil
-	local connectErr = nil
-	local done = false
+	local failures = {}
+	for _, base in ipairs(bridgeCandidates()) do
+		local url = "ws://" .. base .. "/bridge"
+		local socket = nil
+		local connectErr = nil
+		local done = false
 
-	local thread = task.spawn(function()
-		local ok, result = pcall(function()
-			return WebSocket.connect(url)
+		local thread = task.spawn(function()
+			local ok, result, secondary = pcall(function()
+				return connect(url)
+			end)
+			if ok then
+				socket = result
+				connectErr = secondary
+			else
+				connectErr = result
+			end
+			done = true
 		end)
-		if ok then
-			socket = result
-		else
-			connectErr = result
+
+		local deadline = os.clock() + 5
+		while not done and os.clock() < deadline do
+			task.wait(0.05)
 		end
-		done = true
-	end)
 
-	local deadline = os.clock() + 5
-	while not done and os.clock() < deadline do
-		task.wait(0.05)
+		if not done then
+			pcall(task.cancel, thread)
+			failures[#failures + 1] = url .. " (timed out after 5s)"
+		elseif socket ~= nil and socket ~= false then
+			return socket, nil
+		else
+			failures[#failures + 1] = url .. " (" .. tostring(connectErr or "executor returned no socket") .. ")"
+		end
 	end
 
-	if not done then
-		pcall(task.cancel, thread)
-		return nil, "WebSocket connection timed out."
-	end
-	if socket == nil then
-		return nil, "WebSocket connection failed: " .. tostring(connectErr)
-	end
-	return socket, nil
+	return nil, "WebSocket connection failed; tried " .. table.concat(failures, "; ")
 end
 
 -- A live connection. Runs the hello handshake, dispatches inbound messages, and

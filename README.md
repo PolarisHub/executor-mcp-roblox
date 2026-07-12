@@ -40,7 +40,7 @@ See [`docs/architecture/tool-definition-quality.md`](docs/architecture/tool-defi
 
 ### Dashboard
 
-Open `http://localhost:16384/` once the server's running. Ten tabs, flat-dark, sub-100ms live updates over WebSocket:
+Open `http://127.0.0.1:16384/` once the server's running. Ten tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
 - **Tools** — category-grouped browser of all 287 tools with search.
@@ -135,7 +135,7 @@ Launcher tuning is optional. `ROBLOX_MCP_LAUNCHER_DEBUG=1` enables startup/proxy
 Paste in your executor (or add to autoexec):
 
 ```lua
-getgenv().BridgeURL = "localhost:16384"
+getgenv().BridgeURL = "127.0.0.1:16384"
 -- Optional: if the server has ROBLOX_MCP_BRIDGE_TOKEN set, mirror it here.
 -- getgenv().BridgeToken = "your-shared-secret"
 loadstring(game:HttpGet("http://" .. getgenv().BridgeURL .. "/connector.luau"))()

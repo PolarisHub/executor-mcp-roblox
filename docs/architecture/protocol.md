@@ -12,7 +12,7 @@ document explains the semantics. The connector implementation is
 
 - **Transport:** a single WebSocket per connector.
 - **Endpoint:** `ws://<BridgeURL>/bridge`, where `BridgeURL` defaults to
-  `localhost:16384` and is read from `getgenv().BridgeURL` inside the executor.
+  `127.0.0.1:16384` and is read from `getgenv().BridgeURL` inside the executor.
 - **Encoding:** every frame is a UTF-8 JSON document (one JSON value per WebSocket
   message). The connector serializes with `HttpService:JSONEncode`/`JSONDecode`.
 - **Protocol version:** `PROTOCOL_VERSION = 1`. The connector advertises its version
@@ -229,7 +229,7 @@ sequenceDiagram
     participant C as Connector (in-game)
     participant S as Server (bridge)
 
-    Note over C: getgenv().BridgeURL (default localhost:16384)
+    Note over C: getgenv().BridgeURL (default 127.0.0.1:16384)
     C->>S: WebSocket connect ws://<BridgeURL>/bridge
 
     C->>S: hello { protocolVersion: 1, client: handshake }
