@@ -57,6 +57,13 @@ export interface ClientOp {
   readonly scriptToken?: string;
   /** Optional scheduling lane; old connectors safely treat omission as normal. */
   readonly priority?: "normal" | "nested";
+  /**
+   * Namespaces the persistent VM env ("vm"/"vm-reset"). The connector keeps one
+   * env per distinct scope so concurrent agents/sessions on the SAME game don't
+   * clobber each other's globals; a "vm-reset" only wipes this scope. Omitted =
+   * a single shared default env (old connectors ignore the field harmlessly).
+   */
+  readonly vmScope?: string;
 }
 
 /** The outcome of a {@link ClientOp}. */

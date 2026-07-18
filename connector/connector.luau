@@ -480,18 +480,65 @@ end
 local GLOBAL_ENV = (getfenv and getfenv(1)) or _G
 
 -- Writes (user-defined globals) land here and survive across runs; reads fall
--- through to GLOBAL_ENV. Rebuilt on "vm-reset".
-local vmState = nil
+-- through to GLOBAL_ENV. The env is namespaced by op.vmScope (a per-session/agent
+-- key sent by the server) so two agents driving THIS same game keep separate globals
+-- and a "vm-reset" only wipes the caller's own scope. Bounded + LRU-evicted so a
+-- churn of distinct scopes can't grow memory without limit.
+local DEFAULT_VM_SCOPE = "__default__"
+local MAX_VM_SCOPES = 32
+local vmStates = {}      -- [scope] = env table
+local vmScopeOrder = {}  -- scopes by recency (least-recent first) for LRU eviction
+local vmScopeCount = 0
 local function freshVmEnv()
 	local env = {}
 	setmetatable(env, { __index = GLOBAL_ENV })
 	return env
 end
-local function getVmEnv()
-	if vmState == nil then
-		vmState = freshVmEnv()
+local function normalizeVmScope(scope)
+	if typeof(scope) == "string" and scope ~= "" then return scope end
+	return DEFAULT_VM_SCOPE
+end
+local function touchVmScope(scope)
+	for i = #vmScopeOrder, 1, -1 do
+		if vmScopeOrder[i] == scope then
+			table.remove(vmScopeOrder, i)
+			break
+		end
 	end
-	return vmState
+	vmScopeOrder[#vmScopeOrder + 1] = scope
+end
+local function getVmEnv(scope)
+	scope = normalizeVmScope(scope)
+	local env = vmStates[scope]
+	if env == nil then
+		env = freshVmEnv()
+		vmStates[scope] = env
+		vmScopeCount = vmScopeCount + 1
+		-- Evict least-recently-used scopes over the cap (the new scope is not yet in
+		-- vmScopeOrder, so it is never the one evicted).
+		while vmScopeCount > MAX_VM_SCOPES and #vmScopeOrder > 0 do
+			local oldest = table.remove(vmScopeOrder, 1)
+			if oldest ~= nil and vmStates[oldest] ~= nil then
+				vmStates[oldest] = nil
+				vmScopeCount = vmScopeCount - 1
+			end
+		end
+	end
+	touchVmScope(scope)
+	return env
+end
+local function resetVmEnv(scope)
+	scope = normalizeVmScope(scope)
+	if vmStates[scope] ~= nil then
+		vmStates[scope] = nil
+		vmScopeCount = math.max(0, vmScopeCount - 1)
+		for i = #vmScopeOrder, 1, -1 do
+			if vmScopeOrder[i] == scope then
+				table.remove(vmScopeOrder, i)
+				break
+			end
+		end
+	end
 end
 
 --==============================================================================--
@@ -981,9 +1028,10 @@ end
 local function runEval(op, isConnectionAlive)
 	local source = op.source
 
-	-- Wipe the persistent VM environment and return immediately.
+	-- Wipe ONLY the caller's persistent VM scope and return immediately, so one
+	-- agent's reset never destroys another agent's REPL state on the same game.
 	if op.env == "vm-reset" then
-		vmState = freshVmEnv()
+		resetVmEnv(op.vmScope)
 		return { ok = true, value = { reset = true } }
 	end
 
@@ -1006,7 +1054,7 @@ local function runEval(op, isConnectionAlive)
 	local scriptOutput = nil
 	local scriptOutputDropped = 0
 	if typeof(op.scriptToken) == "string" and op.scriptToken ~= "" then
-		local baseEnv = (op.env == "vm") and getVmEnv() or freshVmEnv()
+		local baseEnv = (op.env == "vm") and getVmEnv(op.vmScope) or freshVmEnv()
 		scriptOutput = {}
 		local mcp = buildMcpTable(op.scriptToken)
 		local realPrint, realWarn = GLOBAL_ENV.print, GLOBAL_ENV.warn
@@ -1054,7 +1102,7 @@ local function runEval(op, isConnectionAlive)
 	elseif op.env == "vm" then
 		pcall(function()
 			if isCallable(setfenv) then
-				setfenv(fn, getVmEnv())
+				setfenv(fn, getVmEnv(op.vmScope))
 			end
 		end)
 	end

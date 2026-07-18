@@ -33,6 +33,24 @@ export default defineTool({
       .positive()
       .optional()
       .describe("Per-call deadline in milliseconds. Server default if omitted."),
+    client: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional. Run on a specific connected client — its clientId OR username — for THIS call only, " +
+          "overriding your session's select-client binding without changing it. Lets multiple agents drive " +
+          "different games at the same time; omit to use your session's selected client.",
+      ),
+    agent: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional. A stable label for WHICH agent is calling when several share this MCP session (e.g. " +
+          "'researcher'). Gives that agent its own fair scheduling lane, its own persistent VM on each game, and " +
+          "its own queue budget, so co-tenant agents don't starve or clobber each other.",
+      ),
   }),
   mutatesState: true,
   async execute({ source, threadContext, timeoutMs }, ctx) {

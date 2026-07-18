@@ -6,6 +6,7 @@ import { ScriptBridge } from "../../src/application/services/script-bridge.js";
 import { SessionManager } from "../../src/application/services/session-manager.js";
 import { ToolInvoker } from "../../src/application/services/tool-invoker.js";
 import type { ToolInvokerDeps } from "../../src/application/services/tool-invoker.js";
+import vmResetTool from "../../src/tools/execution/vm-reset.js";
 import type { AppConfig } from "../../src/application/ports/config.js";
 import type { ActivityRecord } from "../../src/application/ports/activity-log.js";
 import type {
@@ -230,6 +231,7 @@ describe("ToolInvoker", () => {
       threadContext: 8, // from config.execution.defaultThreadContext
       timeoutMs: 5000, // from config.execution.defaultTimeoutMs
       schedulerKey: "session-1",
+      vmScope: "session-1", // defaults to the session id when no agent lane is given
     });
     expect(call.signal).toBeInstanceOf(AbortSignal);
   });
@@ -256,6 +258,58 @@ describe("ToolInvoker", () => {
       threadContext: 2,
       timeoutMs: 100,
       schedulerKey: "session-1",
+      vmScope: "session-1",
+    });
+  });
+
+  it("gives a per-call `agent` its own scheduler lane and VM scope", async () => {
+    const { deps, registry, gateway } = buildDeps();
+    const tool = defineTool({
+      name: "run-agent",
+      description: "Runs Luau; carries an agent lane.",
+      category: "Execution",
+      input: z.object({ agent: z.string().optional() }),
+      async execute(_input, ctx) {
+        await ctx.runLuau("return 1", { env: "vm" });
+        return { data: {} };
+      },
+    });
+    registry.register(tool);
+    const invoker = new ToolInvoker(deps);
+
+    await invoker.invoke({
+      toolName: "run-agent",
+      input: { agent: "researcher" },
+      sessionId: SID,
+      sessionLabel: LABEL,
+    });
+
+    // Both the fairness key and the VM namespace fold in the agent label, so a
+    // co-tenant agent on the same session+game gets an isolated lane and VM.
+    expect(gateway.calls[0]?.request).toMatchObject({
+      schedulerKey: "session-1#researcher",
+      vmScope: "session-1#researcher",
+      env: "vm",
+    });
+  });
+
+  it("routes vm-reset to the caller's own agent VM scope", async () => {
+    const { deps, registry, gateway } = buildDeps();
+    registry.register(vmResetTool);
+    const invoker = new ToolInvoker(deps);
+
+    await invoker.invoke({
+      toolName: "vm-reset",
+      input: { agent: "researcher" },
+      sessionId: SID,
+      sessionLabel: LABEL,
+    });
+
+    // Must wipe THIS agent's scope, not the session-default scope that a co-tenant
+    // would use — the exact regression the reserved `agent` key on vm-reset fixes.
+    expect(gateway.calls[0]?.request).toMatchObject({
+      env: "vm-reset",
+      vmScope: "session-1#researcher",
     });
   });
 
@@ -506,5 +560,146 @@ describe("ToolInvoker", () => {
       }),
     ).rejects.toMatchObject({ code: "AMBIGUOUS_CLIENT" });
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  describe("per-call client override", () => {
+    const clientBoundRun = defineTool({
+      name: "run-on",
+      description: "Runs Luau and reports the resolved client.",
+      category: "Execution",
+      input: z.object({ client: z.string().optional() }),
+      async execute(_input, ctx) {
+        await ctx.runLuau("return 1");
+        return { data: { client: ctx.client?.id } };
+      },
+    });
+
+    function twoClientDeps() {
+      const alice = makeClient({ userId: UserId(1), username: "alice" });
+      const bob = makeClient({ userId: UserId(2), username: "bob" });
+      const clients = new InMemoryClientDirectory([alice, bob]);
+      const built = buildDeps({
+        clients,
+        sessions: new SessionManager(new InMemorySessionStore(), clients),
+      });
+      built.registry.register(clientBoundRun);
+      return { ...built, alice, bob, invoker: new ToolInvoker(built.deps) };
+    }
+
+    it("targets the client named by `client` (username) even when selection is ambiguous", async () => {
+      const { invoker, gateway, bob } = twoClientDeps();
+
+      const result = await invoker.invoke({
+        toolName: "run-on",
+        input: { client: "bob" },
+        sessionId: SID,
+        sessionLabel: LABEL,
+      });
+
+      expect(result.data).toEqual({ client: bob.id });
+      expect(gateway.calls[0]?.clientId).toBe(bob.id);
+    });
+
+    it("accepts a clientId as the `client` override", async () => {
+      const { invoker, gateway, alice } = twoClientDeps();
+
+      const result = await invoker.invoke({
+        toolName: "run-on",
+        input: { client: alice.id },
+        sessionId: SID,
+        sessionLabel: LABEL,
+      });
+
+      expect(result.data).toEqual({ client: alice.id });
+      expect(gateway.calls[0]?.clientId).toBe(alice.id);
+    });
+
+    it("does NOT persist the override into the session selection", async () => {
+      const { invoker } = twoClientDeps();
+
+      // An override call succeeds against a specific game...
+      await invoker.invoke({
+        toolName: "run-on",
+        input: { client: "bob" },
+        sessionId: SID,
+        sessionLabel: LABEL,
+      });
+
+      // ...but the session stays unselected, so a later call WITHOUT an override is
+      // still ambiguous — the override never clobbered anyone's selection.
+      await expect(
+        invoker.invoke({
+          toolName: "run-on",
+          input: {},
+          sessionId: SID,
+          sessionLabel: LABEL,
+        }),
+      ).rejects.toMatchObject({ code: "AMBIGUOUS_CLIENT" });
+    });
+
+    it("rejects a `client` that is not connected, before executing", async () => {
+      const { invoker, gateway } = twoClientDeps();
+
+      await expect(
+        invoker.invoke({
+          toolName: "run-on",
+          input: { client: "carol" },
+          sessionId: SID,
+          sessionLabel: LABEL,
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(gateway.calls).toHaveLength(0);
+    });
+
+    it("forwards the resolved client to nested invokeTool calls (composite tools)", async () => {
+      const ctx = twoClientDeps();
+      ctx.registry.register(
+        defineTool({
+          name: "compose",
+          description: "Calls run-on internally.",
+          category: "Execution",
+          input: z.object({ client: z.string().optional() }),
+          async execute(_input, c) {
+            const inner = await c.invokeTool("run-on", {});
+            return { data: inner.data };
+          },
+        }),
+      );
+
+      const result = await ctx.invoker.invoke({
+        toolName: "compose",
+        input: { client: "bob" },
+        sessionId: SID,
+        sessionLabel: LABEL,
+      });
+
+      // The nested run-on ran on bob (the parent's overridden client), not ambiguous.
+      expect(result.data).toEqual({ client: ctx.bob.id });
+      expect(ctx.gateway.calls.every((c) => c.clientId === ctx.bob.id)).toBe(true);
+    });
+
+    it("lets two concurrent same-session calls target two different games", async () => {
+      const { invoker, gateway, alice, bob } = twoClientDeps();
+
+      const [ra, rb] = await Promise.all([
+        invoker.invoke({
+          toolName: "run-on",
+          input: { client: "alice" },
+          sessionId: SID,
+          sessionLabel: LABEL,
+        }),
+        invoker.invoke({
+          toolName: "run-on",
+          input: { client: "bob" },
+          sessionId: SID,
+          sessionLabel: LABEL,
+        }),
+      ]);
+
+      expect(ra.data).toEqual({ client: alice.id });
+      expect(rb.data).toEqual({ client: bob.id });
+      const targeted = gateway.calls.map((c) => c.clientId).sort();
+      expect(targeted).toEqual([alice.id, bob.id].sort());
+    });
   });
 });

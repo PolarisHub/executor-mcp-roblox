@@ -35,8 +35,12 @@ export interface LuauOptions {
 export interface ScriptingContext {
   /** Loopback base URL of this server, reachable from the executor's HTTP client. */
   readonly baseUrl: string;
-  /** Mint a one-shot token for the bridge; dispose when done. */
-  mint(opts?: { budget?: number }): { token: string; dispose: () => void };
+  /**
+   * Mint a one-shot token for the bridge; dispose when done. Pass `clientId` to
+   * pin the token's nested `mcp.*` calls to a specific game (e.g. per fanout
+   * target) instead of the session's resolved client.
+   */
+  mint(opts?: { budget?: number; clientId?: ClientId }): { token: string; dispose: () => void };
   /** Read-only view of the tool catalog, for the script tool's preflight check. */
   readonly knownTools: readonly string[];
 }

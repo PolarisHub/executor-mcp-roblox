@@ -13,6 +13,9 @@ export default defineTool({
     "by username — selecting by username is recommended because it is account-sticky: a client gets a new clientId " +
     "every reconnect, but a username binding follows the account across rejoins without re-selecting. " +
     "Each session keeps its own selection, so two sessions can drive two games at once. " +
+    "If several agents SHARE one session, don't fight over this binding — instead pass `client` " +
+    "(clientId or username) directly to script/execute/run-luau to target a game for a single call " +
+    "without changing anyone's selection. " +
     "Provide exactly one of clientId or username; the value must match a currently-connected client.",
   category: "Session & Client",
   input: z

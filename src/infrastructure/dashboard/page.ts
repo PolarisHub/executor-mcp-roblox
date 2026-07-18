@@ -3635,7 +3635,7 @@ return p"></textarea>
   // RET_DELAY > REQ_LIFE so the response leaves the client only AFTER the request
   // head has actually arrived (t=1 ~ REQ_LIFE seconds), with a short processing gap.
   var REQ_LIFE = 3.0, RET_LIFE = 3.0, FLOW_LIFE = 1.5, RET_DELAY = 3.2;
-  var AGENT_MAX = 2, AGENT_TTL = 70;
+  var AGENT_MAX = 6, AGENT_TTL = 70;
 
   function resize() {
     W = host.clientWidth || 800; H = host.clientHeight || 320;

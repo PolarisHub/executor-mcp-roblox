@@ -4,7 +4,8 @@ import {
   ValidationError,
   toDomainError,
 } from "../../domain/errors/errors.js";
-import type { SessionId } from "../../domain/shared/ids.js";
+import type { RobloxClient } from "../../domain/client/client.js";
+import type { ClientId, SessionId } from "../../domain/shared/ids.js";
 import type {
   ActivityLog,
   IntelligenceActivity,
@@ -131,6 +132,84 @@ function attachFailureRecovery(dataValue: unknown, recovery: unknown): Record<st
   return data ? { ...data, recovery } : { result: dataValue, recovery };
 }
 
+/** Reserved input key: a per-call target that overrides the session's selection. */
+const CLIENT_OVERRIDE_KEY = "client";
+
+/** Reserved input key: a per-call agent lane, for isolation + fair scheduling. */
+const AGENT_LANE_KEY = "agent";
+
+/**
+ * Resolve an optional per-call `agent` label. Several agents that share ONE MCP
+ * session pass distinct labels to get their OWN scheduler fairness lane, their OWN
+ * per-game persistent VM, and their OWN queue budget — so they never starve or
+ * clobber each other. Sanitized to a short, wire-safe token; returns undefined when
+ * absent/blank.
+ */
+function resolveAgentLane(input: unknown): string | undefined {
+  const raw = objectValue(input)?.[AGENT_LANE_KEY];
+  if (typeof raw !== "string") return undefined;
+  const cleaned = raw.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 64);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
+ * A tool call may carry an optional `client` (a connected client's clientId OR
+ * username) to target a specific game for THAT call only. It overrides the
+ * session's select-client binding WITHOUT mutating it, so several agents that share
+ * one MCP session can drive different games at the same time (each call is routed to
+ * its own connection, and the bridge runs connections concurrently). Returns the
+ * resolved client, or undefined when no override was supplied; throws a clear
+ * {@link ValidationError} when the named client is not currently connected.
+ */
+function resolveClientOverride(
+  input: unknown,
+  clients: readonly RobloxClient[],
+): RobloxClient | undefined {
+  const raw = objectValue(input)?.[CLIENT_OVERRIDE_KEY];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new ValidationError(
+      "`client` must be a non-empty string: a connected client's clientId or username.",
+    );
+  }
+  const needle = raw.trim();
+  // Exact clientId wins; otherwise match username case-insensitively, preferring the
+  // most-recently-connected window so a reconnect under a new clientId still resolves.
+  const byId = clients.find((c) => c.id === needle);
+  if (byId) return byId;
+  const lower = needle.toLowerCase();
+  const byName = clients
+    .filter((c) => c.username !== null && c.username.toLowerCase() === lower)
+    .sort((a, b) => b.connectedAt - a.connectedAt);
+  if (byName[0]) return byName[0];
+  throw new ValidationError(
+    `No connected client matches \`client\` = "${needle}" (looked up by clientId then username).`,
+    { connected: clients.map((c) => ({ clientId: c.id, username: c.username })) },
+  );
+}
+
+/**
+ * Forward the caller's resolved client and/or agent lane onto a nested invocation's
+ * input (via the reserved `client`/`agent` keys) so a composite tool keeps every
+ * sub-call on the SAME game and in the SAME fairness/VM lane as the parent — even
+ * when the parent was targeted with a per-call override. Keys already present in the
+ * nested input still win.
+ */
+function withForwarded(input: unknown, forward: { client?: ClientId; agent?: string }): unknown {
+  const inject: Record<string, unknown> = {};
+  if (forward.client !== undefined) inject[CLIENT_OVERRIDE_KEY] = forward.client;
+  if (forward.agent !== undefined) inject[AGENT_LANE_KEY] = forward.agent;
+  if (Object.keys(inject).length === 0) return input;
+  if (input === undefined || input === null) return inject;
+  if (typeof input !== "object" || Array.isArray(input)) return input;
+  const obj = input as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...obj };
+  for (const [k, v] of Object.entries(inject)) {
+    if (out[k] === undefined) out[k] = v;
+  }
+  return out;
+}
+
 /**
  * The single use-case that runs a tool. It is the only place that knows the full
  * lifecycle of a call — validate, resolve the target client, build the sandboxed
@@ -210,9 +289,23 @@ export class ToolInvoker {
     }
 
     const requiresClient = tool.requiresClient !== false;
-    const client = requiresClient
-      ? sessions.requireActiveClient(request.sessionId, request.sessionLabel)
+    // A per-call `client` (clientId/username) targets a specific game for this call
+    // only, without touching the session's select-client binding — so concurrent
+    // agents (even ones sharing an MCP session) never clobber each other's target.
+    // Absent an override, fall back to the session's resolved active client.
+    const clientOverride = requiresClient
+      ? resolveClientOverride(request.input, clients.list())
       : undefined;
+    const client = requiresClient
+      ? (clientOverride ?? sessions.requireActiveClient(request.sessionId, request.sessionLabel))
+      : undefined;
+
+    // Per-agent lane: distinct agents — even ones multiplexed over ONE MCP session —
+    // get their own scheduler fairness, their own per-game persistent VM, and their
+    // own queue budget when they tag calls with a distinct `agent`. Without a tag the
+    // lane is just the session id (today's behaviour).
+    const agentLabel = resolveAgentLane(request.input);
+    const laneKey = agentLabel ? `${request.sessionId}#${agentLabel}` : request.sessionId;
 
     const logger = this.deps.logger.child({
       tool: tool.name,
@@ -235,7 +328,7 @@ export class ToolInvoker {
       invokeTool: (name, input) =>
         this.invoke({
           toolName: name,
-          input,
+          input: withForwarded(input, { ...(client ? { client: client.id } : {}), ...(agentLabel ? { agent: agentLabel } : {}) }),
           sessionId: request.sessionId,
           sessionLabel: request.sessionLabel,
           ...(request.priority ? { priority: request.priority } : {}),
@@ -246,7 +339,8 @@ export class ToolInvoker {
           this.deps.scriptBridge.mint(
             request.sessionId,
             request.sessionLabel,
-            client?.id,
+            opts?.clientId ?? client?.id,
+            agentLabel,
             opts?.budget,
           ),
         knownTools: this.deps.registry.list().map((t) => t.name),
@@ -266,7 +360,8 @@ export class ToolInvoker {
             ...((options?.priority ?? request.priority)
               ? { priority: options?.priority ?? request.priority }
               : {}),
-            schedulerKey: request.sessionId,
+            schedulerKey: laneKey,
+            vmScope: laneKey,
           },
           controller.signal,
         );
@@ -283,7 +378,8 @@ export class ToolInvoker {
             ...((options?.priority ?? request.priority)
               ? { priority: options?.priority ?? request.priority }
               : {}),
-            schedulerKey: request.sessionId,
+            schedulerKey: laneKey,
+            vmScope: laneKey,
           },
           controller.signal,
         ),

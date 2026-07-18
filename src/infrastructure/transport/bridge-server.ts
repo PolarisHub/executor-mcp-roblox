@@ -513,6 +513,7 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
               ...(ticket.request.env ? { env: ticket.request.env } : {}),
               ...(ticket.request.scriptToken ? { scriptToken: ticket.request.scriptToken } : {}),
               priority: ticket.request.priority ?? "normal",
+              ...(ticket.request.vmScope ? { vmScope: ticket.request.vmScope } : {}),
             },
           });
         } catch (error) {

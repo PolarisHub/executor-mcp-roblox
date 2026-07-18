@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ScriptBridge } from "../../src/application/services/script-bridge.js";
 import type { ToolInvoker } from "../../src/application/services/tool-invoker.js";
-import { SessionId } from "../../src/domain/shared/ids.js";
+import { ClientId, SessionId } from "../../src/domain/shared/ids.js";
 
 function fakeInvoker(impl: ToolInvoker["invoke"]): ToolInvoker {
   return { invoke: impl } as unknown as ToolInvoker;
@@ -29,6 +29,86 @@ describe("ScriptBridge", () => {
     });
   });
 
+  it("pins nested calls to the token's bound client via an injected `client`", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"));
+    await bridge.run(token, "get-players", { a: 1 });
+
+    expect(invoke).toHaveBeenCalledWith({
+      toolName: "get-players",
+      input: { a: 1, client: "client-bob" },
+      sessionId: "s1",
+      sessionLabel: "label",
+      priority: "nested",
+    });
+  });
+
+  it("injects the bound client even when the nested call passes no args", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"));
+    await bridge.run(token, "get-players", undefined);
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({ input: { client: "client-bob" } }),
+    );
+  });
+
+  it("lets an explicit `client` in nested args win over the token's bound client", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"));
+    await bridge.run(token, "get-players", { client: "alice" });
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({ input: { client: "alice" } }),
+    );
+  });
+
+  it("forwards the token's agent lane onto nested calls", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"), "researcher");
+    await bridge.run(token, "get-players", { a: 1 });
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({ input: { a: 1, client: "client-bob", agent: "researcher" } }),
+    );
+  });
+
+  it("downgrades a nested call aimed at a different game to normal priority", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"));
+    // Explicit client targets a DIFFERENT game than the script's own — it must not
+    // ride game-alice's reserved nested lane.
+    await bridge.run(token, "get-players", { client: "client-alice" });
+
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ priority: "normal" }));
+  });
+
+  it("keeps nested priority for a call on the script's own game", async () => {
+    const bridge = new ScriptBridge();
+    const invoke = vi.fn(async () => ({ data: {} }));
+    bridge.attach(fakeInvoker(invoke));
+
+    const { token } = bridge.mint(SessionId("s1"), "label", ClientId("client-bob"));
+    await bridge.run(token, "get-players", {});
+
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ priority: "nested" }));
+  });
+
   it("rejects an unknown or disposed token", async () => {
     const bridge = new ScriptBridge();
     bridge.attach(fakeInvoker(async () => ({ data: {} })));
@@ -47,7 +127,7 @@ describe("ScriptBridge", () => {
     const bridge = new ScriptBridge();
     const invoke = vi.fn(async () => ({ data: {} }));
     bridge.attach(fakeInvoker(invoke));
-    const { token } = bridge.mint(SessionId("s1"), "label", undefined, 2);
+    const { token } = bridge.mint(SessionId("s1"), "label", undefined, undefined, 2);
 
     expect((await bridge.run(token, "get-players", {})).ok).toBe(true);
     expect((await bridge.run(token, "get-players", {})).ok).toBe(true);

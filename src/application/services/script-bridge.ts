@@ -9,6 +9,8 @@ interface Grant {
   readonly sessionId: SessionId;
   readonly sessionLabel: string;
   readonly clientId?: ClientId;
+  /** The parent script's agent lane, forwarded onto nested calls for isolation. */
+  readonly agentLane?: string;
   /** Max RPC calls this script may make through the bridge before further calls reject. */
   readonly budget: number;
   /** Running count of RPC calls served for this token. */
@@ -43,6 +45,7 @@ export class ScriptBridge {
     sessionId: SessionId,
     sessionLabel: string,
     clientId?: ClientId,
+    agentLane?: string,
     budget: number = DEFAULT_SCRIPT_RPC_BUDGET,
   ): { token: string; dispose: () => void } {
     const token = randomUUID();
@@ -50,6 +53,7 @@ export class ScriptBridge {
       sessionId,
       sessionLabel,
       ...(clientId ? { clientId } : {}),
+      ...(agentLane ? { agentLane } : {}),
       budget: Math.max(1, Math.floor(budget)),
       rpcCount: 0,
     });
@@ -73,12 +77,43 @@ export class ScriptBridge {
     }
     grant.rpcCount += 1;
     try {
+      // Pin every nested mcp.* call to the SAME game AND agent lane the script runs
+      // in, so a script keeps every sub-call on its own game / VM / fairness lane —
+      // never re-resolving through the session's selection (which may be unset,
+      // ambiguous, or pointing at a different game). Explicit `client`/`agent` in the
+      // nested args still win.
+      const provided =
+        typeof args === "object" && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : undefined;
+      const inject: Record<string, unknown> = {};
+      if (grant.clientId !== undefined) inject["client"] = grant.clientId;
+      if (grant.agentLane !== undefined) inject["agent"] = grant.agentLane;
+      let input: unknown = args ?? {};
+      if (Object.keys(inject).length > 0) {
+        if (provided) {
+          const out: Record<string, unknown> = { ...provided };
+          for (const [k, v] of Object.entries(inject)) if (out[k] === undefined) out[k] = v;
+          input = out;
+        } else if (args === undefined || args === null) {
+          input = inject;
+        }
+      }
+      // A nested call aimed at a DIFFERENT game than the script's own must not ride
+      // that game's reserved nested lane (which exists for a script actually running
+      // there) — otherwise one agent could queue-jump another agent's game. Only the
+      // script's own game keeps the nested priority; anything else competes fairly.
+      const explicitClient = provided?.["client"];
+      const crossConnection =
+        typeof explicitClient === "string" &&
+        grant.clientId !== undefined &&
+        explicitClient !== grant.clientId;
       const result = await this.invoker.invoke({
         toolName,
-        input: args ?? {},
+        input,
         sessionId: grant.sessionId,
         sessionLabel: grant.sessionLabel,
-        priority: "nested",
+        priority: crossConnection ? "normal" : "nested",
       });
       if (result.isError) {
         const message = typeof result.data === "string" ? result.data : JSON.stringify(result.data);

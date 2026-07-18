@@ -17,6 +17,12 @@ export interface EvalRequest {
   readonly priority?: EvalPriority;
   /** Host-only fairness key. It is never sent to or exposed inside the game. */
   readonly schedulerKey?: string;
+  /**
+   * Namespaces the persistent VM env on the client so concurrent agents/sessions
+   * driving the SAME game keep separate globals (and a vm-reset only wipes the
+   * caller's own env). Omitted = the connector's shared default scope.
+   */
+  readonly vmScope?: string;
 }
 
 /**

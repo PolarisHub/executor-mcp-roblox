@@ -99,6 +99,7 @@ export class PlaybookService {
       sessionId,
       sessionTag,
       cid,
+      undefined,
       options.rpcBudget,
     );
     try {
@@ -106,6 +107,7 @@ export class PlaybookService {
         source,
         threadContext: this.config.execution.defaultThreadContext,
         timeoutMs: options.timeoutMs ?? 120000,
+        vmScope: sessionId,
         env: options.persistent === false ? "fresh" : "vm",
         scriptToken: token,
       });

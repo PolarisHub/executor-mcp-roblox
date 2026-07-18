@@ -51,6 +51,7 @@ const clientOpSchema = z.object({
   env: z.enum(["fresh", "vm", "vm-reset"]).optional(),
   scriptToken: z.string().optional(),
   priority: z.enum(["normal", "nested"]).optional(),
+  vmScope: z.string().max(256).optional(),
 }) satisfies z.ZodType<ClientOp>;
 
 const rpcResultSchema = z.union([

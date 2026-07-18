@@ -117,9 +117,13 @@ export default defineTool({
       // ctx.scripting is non-null by the early-return above, but TS narrowing
       // doesn't follow into the closure — re-assert for the type system.
       const scripting = ctx.scripting!;
-      const { token, dispose } = scripting.mint(
-        rpcBudget !== undefined ? { budget: rpcBudget } : undefined,
-      );
+      // Bind the token to THIS fanout target so the body's nested mcp.* calls run on
+      // the same game (fanout is requiresClient:false, so there is no session client
+      // to fall back to — without this they'd re-resolve to the wrong game or error).
+      const { token, dispose } = scripting.mint({
+        clientId,
+        ...(rpcBudget !== undefined ? { budget: rpcBudget } : {}),
+      });
       try {
         const data = await ctx.runLuauOn(clientId, source, {
           timeoutMs: timeoutMs ?? 60000,

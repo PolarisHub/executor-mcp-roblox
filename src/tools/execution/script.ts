@@ -40,6 +40,24 @@ export default defineTool({
         "The Luau script to run. Has `game`/`workspace`/all in-game globals, plus `mcp.<tool>(args)` to call any " +
           "tool and use its returned data inline. `print`/`warn` are captured. `return <value>` to hand a value back.",
       ),
+    client: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional. Run on a specific connected client — its clientId OR username — for THIS call only, " +
+          "overriding your session's select-client binding WITHOUT changing it. Lets multiple agents drive " +
+          "different games at the same time; omit to use your session's selected client.",
+      ),
+    agent: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional. A stable label for WHICH agent is calling when several share this MCP session (e.g. " +
+          "'researcher'). Gives that agent its own fair scheduling lane, its own persistent VM on each game, and " +
+          "its own queue budget, so co-tenant agents don't starve or clobber each other.",
+      ),
     persistent: z
       .boolean()
       .optional()
