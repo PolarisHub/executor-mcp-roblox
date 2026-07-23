@@ -36,6 +36,11 @@ describe("connector load safety", () => {
     expect(connector).toContain('"WebSocket connection failed; tried "');
   });
 
+  it("keeps one logical client id across reconnects", () => {
+    expect(connector).toContain('local key = "__executor_mcp_client_id"');
+    expect(connector).toContain("local clientId = StableClientId");
+  });
+
   it("advertises closure, Actor, state, script-identity, and input primitives during handshake", () => {
     for (const capability of [
       '"clonefunction"',

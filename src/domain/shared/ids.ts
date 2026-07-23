@@ -1,6 +1,6 @@
 import type { Brand } from "./brand.js";
 
-/** A connected executor connection. New value every (re)connect / server rejoin. */
+/** A connected executor connection. Stable for modern connector reconnects. */
 export type ClientId = Brand<string, "ClientId">;
 /** One AI conversation/session driving the bridge. */
 export type SessionId = Brand<string, "SessionId">;

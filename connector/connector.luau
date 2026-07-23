@@ -269,6 +269,27 @@ local function newGuid()
 	return string.format("%08x-%04x-%04x", math.random(0, 0xFFFFFFFF), math.random(0, 0xFFFF), math.random(0, 0xFFFF))
 end
 
+-- Keep one logical connector identity across socket retries. The bridge exposes
+-- this value as the clientId, so MCP sessions, dashboards, and per-call client
+-- overrides do not become stale every time the WebSocket briefly reconnects.
+-- A script reload in the same executor reuses getgenv() as well; a second copy
+-- of the connector therefore replaces the first socket instead of creating an
+-- invisible duplicate client.
+local StableClientId = nil
+pcall(function()
+	local key = "__executor_mcp_client_id"
+	local existing = RuntimeConfig[key]
+	if typeof(existing) == "string" and existing ~= "" then
+		StableClientId = existing
+	else
+		StableClientId = newGuid()
+		RuntimeConfig[key] = StableClientId
+	end
+end)
+if typeof(StableClientId) ~= "string" or StableClientId == "" then
+	StableClientId = newGuid()
+end
+
 --==============================================================================--
 -- Handshake
 --==============================================================================--
@@ -1306,7 +1327,7 @@ local function runConnection()
 		return false, err
 	end
 
-	local clientId = newGuid()
+	local clientId = StableClientId
 	local connected = true
 
 	local function send(message)

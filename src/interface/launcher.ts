@@ -367,20 +367,23 @@ async function recoverDegradedOwner(
 
 async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
   const stdio = new StdioServerTransport();
-  const http = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-    reconnectionOptions: {
-      maxRetries: 0,
-      initialReconnectionDelay: 100,
-      maxReconnectionDelay: 100,
-      reconnectionDelayGrowFactor: 1,
-    },
-  });
+  type RpcMessage = Parameters<NonNullable<typeof stdio.onmessage>>[0];
+  interface InternalWaiter {
+    readonly resolve: (message: RpcMessage) => void;
+    readonly reject: (error: unknown) => void;
+  }
 
   let closed = false;
   let inputClosed = false;
   let upstreamReady = false;
+  let intentionalUpstreamClose = false;
+  let http!: StreamableHTTPClientTransport;
+  let recovery: Promise<void> | undefined;
+  let initializeMessage: RpcMessage | undefined;
+  let initializedMessage: RpcMessage | undefined;
+  const internalWaiters = new Map<string, InternalWaiter>();
   let resolveClosed: (() => void) | undefined;
-  const queued: Parameters<NonNullable<typeof stdio.onmessage>>[0][] = [];
+  const queued: RpcMessage[] = [];
   const finished = new Promise<void>((resolve) => {
     resolveClosed = resolve;
   });
@@ -399,50 +402,169 @@ async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
     inputClosed = true;
     finish();
   };
-  const sendUpstream = (message: (typeof queued)[number]): void => {
-    void http.send(message).catch((error: unknown) => {
-      // A per-request POST failure (e.g. a stale-session 404, or a transient hiccup)
-      // must NOT collapse the whole proxy. Answer a JSON-RPC *request* with an error
-      // so the host doesn't hang forever, and drop notifications. Only a real
-      // transport close (onclose / stdin-end) tears the proxy down.
-      const msg = error instanceof Error ? error.message : String(error);
-      const id = (message as { id?: string | number | null }).id;
-      if (id !== undefined && id !== null) {
-        log(`upstream request failed, returning error to host - ${msg}`);
-        void stdio
-          .send({ jsonrpc: "2.0", id, error: { code: -32001, message: msg } })
-          .catch(fail);
-      } else {
-        log(`upstream notification dropped - ${msg}`, debug);
+
+  const messageId = (message: RpcMessage): string | number | undefined => {
+    if ("id" in message && (typeof message.id === "string" || typeof message.id === "number")) {
+      return message.id;
+    }
+    return undefined;
+  };
+  const messageMethod = (message: RpcMessage): string | undefined =>
+    "method" in message && typeof message.method === "string" ? message.method : undefined;
+  const isUnknownSession = (error: unknown): boolean =>
+    /unknown\s+(?:mcp\s+)?session|session\s+not\s+found|\b404\b/i.test(
+      error instanceof Error ? error.message : String(error),
+    );
+
+  const createHttpTransport = (): StreamableHTTPClientTransport => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+      reconnectionOptions: {
+        maxRetries: 0,
+        initialReconnectionDelay: 100,
+        maxReconnectionDelay: 100,
+        reconnectionDelayGrowFactor: 1,
+      },
+    });
+    transport.onmessage = (message) => {
+      const id = messageId(message);
+      const waiter = id === undefined ? undefined : internalWaiters.get(String(id));
+      if (waiter) {
+        internalWaiters.delete(String(id));
+        waiter.resolve(message);
+        return;
       }
+      void stdio.send(message).catch(fail);
+    };
+    transport.onerror = (error: unknown) => {
+      log(`http transport error - ${error instanceof Error ? error.message : String(error)}`, debug);
+    };
+    transport.onclose = () => {
+      if (!intentionalUpstreamClose && transport === http && !closed) {
+        fail(new Error("HTTP transport closed"));
+      }
+    };
+    return transport;
+  };
+
+  const sendInternal = async (transport: StreamableHTTPClientTransport, message: RpcMessage) => {
+    const id = messageId(message);
+    if (id === undefined) {
+      await transport.send(message);
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const key = String(id);
+      const timer = setTimeout(() => {
+        internalWaiters.delete(key);
+        reject(new Error("Timed out while rebuilding the MCP owner session."));
+      }, 10000);
+      internalWaiters.set(key, {
+        resolve: () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        },
+      });
+      void transport.send(message).catch((error: unknown) => {
+        clearTimeout(timer);
+        internalWaiters.delete(key);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
     });
   };
 
+  const recoverUpstream = async (): Promise<void> => {
+    if (recovery) return recovery;
+    recovery = (async () => {
+      if (!initializeMessage) {
+        throw new Error("Cannot rebuild MCP owner session before initialization.");
+      }
+      upstreamReady = false;
+      intentionalUpstreamClose = true;
+      await http.close().catch(() => undefined);
+      intentionalUpstreamClose = false;
+
+      const next = createHttpTransport();
+      http = next;
+      await next.start();
+      await sendInternal(next, initializeMessage);
+      if (initializedMessage) await next.send(initializedMessage);
+      upstreamReady = true;
+      log(`rebuilt stale MCP owner session at ${base}`, debug);
+    })().finally(() => {
+      recovery = undefined;
+    });
+    return recovery;
+  };
+
+  const sendUpstream = (message: RpcMessage): void => {
+    const run = async (): Promise<void> => {
+      try {
+        await http.send(message);
+      } catch (error: unknown) {
+        // The owner keeps MCP sessions in memory. If it restarts or evicts this
+        // session, rebuild it transparently and retry the same JSON-RPC message
+        // once instead of exposing "Unknown MCP session" to the host.
+        if (!closed && initializeMessage && (isUnknownSession(error) || recovery)) {
+          try {
+            await recoverUpstream();
+            await http.send(message);
+            return;
+          } catch (recoveryError: unknown) {
+            const finalError = recoveryError;
+            fail(finalError);
+            const msg = finalError instanceof Error ? finalError.message : String(finalError);
+            const id = messageId(message);
+            if (id !== undefined) {
+              log(`upstream request failed, returning error to host - ${msg}`);
+              void stdio
+                .send({ jsonrpc: "2.0", id, error: { code: -32001, message: msg } })
+                .catch(fail);
+            } else {
+              log(`upstream notification dropped - ${msg}`, debug);
+            }
+            return;
+          }
+        }
+
+        // A per-request POST failure must not collapse the whole proxy. Answer a
+        // JSON-RPC request with an error so the host does not hang forever, and
+        // drop notifications. Only a real transport close tears the proxy down.
+        const msg = error instanceof Error ? error.message : String(error);
+        const id = messageId(message);
+        if (id !== undefined) {
+          log(`upstream request failed, returning error to host - ${msg}`);
+          void stdio
+            .send({ jsonrpc: "2.0", id, error: { code: -32001, message: msg } })
+            .catch(fail);
+        } else {
+          log(`upstream notification dropped - ${msg}`, debug);
+        }
+      }
+    };
+    void run();
+  };
+
   stdio.onmessage = (message) => {
-    if (upstreamReady) sendUpstream(message);
+    if (messageMethod(message) === "initialize") initializeMessage = message;
+    if (messageMethod(message) === "notifications/initialized") initializedMessage = message;
+    if (upstreamReady || recovery) sendUpstream(message);
     else queued.push(message);
   };
-  http.onmessage = (message) => {
-    void stdio.send(message).catch(fail);
-  };
   stdio.onerror = fail;
-  // Non-fatal: the SDK routes per-POST errors here too, so only log. A genuine
-  // transport close is handled by http.onclose (which triggers reconnect).
-  http.onerror = (error: unknown) => {
-    log(`http transport error - ${error instanceof Error ? error.message : String(error)}`, debug);
-  };
   stdio.onclose = () => {
     void http.close().catch(fail);
     finish();
-  };
-  http.onclose = () => {
-    if (!closed) fail(new Error("HTTP transport closed"));
   };
   process.stdin.once("end", closeFromInput);
   process.stdin.once("close", closeFromInput);
 
   try {
     await stdio.start();
+    http = createHttpTransport();
     await http.start();
     upstreamReady = true;
     for (const message of queued.splice(0)) sendUpstream(message);
@@ -452,6 +574,7 @@ async function proxyToOwner(base: string, debug: boolean): Promise<boolean> {
     process.stdin.off("end", closeFromInput);
     process.stdin.off("close", closeFromInput);
     await stdio.close().catch(() => undefined);
+    intentionalUpstreamClose = true;
     await http.close().catch(() => undefined);
   }
   return !inputClosed;

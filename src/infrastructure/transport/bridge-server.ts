@@ -670,7 +670,24 @@ export class BridgeServer implements ExecutionGateway, ClientDirectory, ClientAd
       );
     }
 
-    const id = ClientId(randomUUID());
+    // Prefer the connector-provided stable identity. New connectors preserve
+    // it across WebSocket retries, which keeps MCP selections and dashboard
+    // client overrides valid while the socket is being replaced. Older or
+    // malformed connectors still get a server-generated ID for compatibility.
+    const requestedId = handshake.clientId.trim();
+    const id =
+      requestedId.length > 0 && requestedId.length <= 256
+        ? ClientId(requestedId)
+        : ClientId(randomUUID());
+
+    // A reconnect can arrive before the old socket's close event. Replace that
+    // stale socket deterministically instead of exposing two entries with the
+    // same logical connector or routing work into the old connection.
+    const previous = this.connections.get(id);
+    if (previous) {
+      this.logger.info({ clientId: id }, "replacing stale connector connection");
+      this.dropConnection(previous, "replaced by connector reconnect");
+    }
     const client: RobloxClient = {
       id,
       userId: handshake.userId === null ? null : UserId(handshake.userId),

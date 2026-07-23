@@ -55,7 +55,7 @@ field is a `ClientHandshake`. The handshake is rebuilt on **every (re)connect**,
   "type": "hello",
   "protocolVersion": 1,
   "client": {
-    "clientId": "f47ac10b-58cc-4372-a567-0e02b2c3d479", // fresh GUID per connect
+    "clientId": "f47ac10b-58cc-4372-a567-0e02b2c3d479", // stable connector identity
     "userId": 123456, // Players.LocalPlayer.UserId, or null
     "username": "Builderman", // Players.LocalPlayer.Name, or null
     "displayName": "Builder", // Players.LocalPlayer.DisplayName, or null
